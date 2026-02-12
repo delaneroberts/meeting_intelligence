@@ -88,6 +88,7 @@ Text to analyze:
             ],
             temperature=0.0,
             max_tokens=200,
+            response_format={"type": "json_object"},
         )
         
         response_text = (response.choices[0].message.content or "").strip()
@@ -219,6 +220,11 @@ def detect_and_translate_if_needed(text: str, source_language: str = "") -> tupl
         language_name = detection_result.get("detected_language", "Unknown")
         is_english = detection_result.get("is_english", False)
 
+        # If detection failed, avoid translating to "Unknown"
+        if language_name.lower() == "unknown":
+            logger.warning("Language detection returned Unknown; skipping translation")
+            return text, "Unknown", False
+
         # If already English, return as-is
         if is_english:
             logger.info("Text is already in English, no translation needed")
@@ -253,6 +259,9 @@ def translate_text(text: str, target_language: str) -> str:
     """
     if not text or not text.strip():
         return ""
+
+    if not target_language or target_language.lower() == "unknown":
+        return text
     
     prompt = f"""Translate the following text to {target_language}. 
 Only provide the translated text, nothing else.

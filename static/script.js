@@ -73,7 +73,7 @@ let currentAgenda = "";
 
 // Store original and translated content
 let currentMeetingData = {
-  originalLanguage: "English",
+  originalLanguage: "Unknown",
   originalSummary: "",
   originalTranscript: "",
   englishSummary: "",
@@ -111,11 +111,15 @@ function updateSettingsInfo() {
   const transcriptLang = appSettings.default_language || "auto";
   const summaryLang = appSettings.summary_language || transcriptLang;
 
+  const detectedLabel = detected && detected.toLowerCase() !== "unknown" && detected.toLowerCase() !== "english"
+    ? ` (${detected})`
+    : "";
+
   const transcriptLabel = transcriptLang === "auto"
-    ? `Auto${detected ? ` (${detected})` : ""}`
+    ? `Auto${detectedLabel}`
     : transcriptLang;
   const summaryLabel = summaryLang === "auto"
-    ? `Auto${detected ? ` (${detected})` : ""}`
+    ? `Auto${detectedLabel}`
     : summaryLang;
 
   settingsInfo.textContent = `Defaults: transcript ${transcriptLabel}, summary ${summaryLabel}`;
@@ -365,16 +369,17 @@ async function processFormData(formData, initialLabel = "Processing…", transcr
     resultsSection.style.display = "block";
 
     // Display language information if available
-    if (data.original_language && data.original_language !== "English") {
+    if (data.original_language) {
       languageInfo.style.display = "block";
       languageText.textContent = `🌐 Meeting language: ${data.original_language}`;
-
-      // Show translation controls for non-English meetings
-      translationControls.style.display = "block";
-      targetLanguageSelect.value = ""; // Reset selection
     } else {
       languageInfo.style.display = "none";
-      translationControls.style.display = "none";
+    }
+
+    // Always show translation controls so English meetings can be translated too
+    if (translationControls) {
+      translationControls.style.display = "block";
+      targetLanguageSelect.value = ""; // Reset selection
     }
 
     // Display content based on settings
@@ -774,6 +779,18 @@ translateBtn.addEventListener("click", async () => {
 
   if (!currentMeetingData.englishSummary || !currentMeetingData.englishTranscript) {
     alert("No meeting data to translate");
+    return;
+  }
+
+  if (targetLanguage.toLowerCase() === "english") {
+    summaryText.textContent = currentMeetingData.englishSummary;
+    transcriptText.textContent = currentMeetingData.englishTranscript;
+    currentMeetingData.currentDisplayLanguage = "English";
+    translationStatus.style.display = "block";
+    translationStatus.innerHTML = `<small class="text-success">✓ Translated to English</small>`;
+    setTimeout(() => {
+      translationStatus.style.display = "none";
+    }, 3000);
     return;
   }
 

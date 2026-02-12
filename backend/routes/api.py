@@ -299,11 +299,15 @@ def translate_content():
         if not summary or not transcript:
             return jsonify({"error": "summary and transcript are required"}), 400
 
-        # Translate summary
-        translated_summary = translation.translate_text(summary, target_language)
-        
-        # Translate transcript
-        translated_transcript = translation.translate_text(transcript, target_language)
+        if target_language.lower() == "english":
+            translated_summary = summary
+            translated_transcript = transcript
+        else:
+            # Translate summary
+            translated_summary = translation.translate_text(summary, target_language)
+
+            # Translate transcript
+            translated_transcript = translation.translate_text(transcript, target_language)
 
         return jsonify({
             "translated_summary": translated_summary,
@@ -363,6 +367,9 @@ def _translate_results_back(summary: str, action_items: list, target_language: s
     Returns:
         Tuple of (translated_summary, translated_action_items)
     """
+    if not target_language or target_language.lower() == "unknown":
+        return summary, action_items
+
     try:
         translated_summary = translation.translate_text(summary, target_language)
     except Exception as e:

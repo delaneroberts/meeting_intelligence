@@ -10,6 +10,7 @@ venv/
 logs/
 transcripts/
 uploads/
+*.db
 .pytest_cache/
 .mypy_cache/
 .vscode/
