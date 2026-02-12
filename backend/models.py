@@ -74,7 +74,7 @@ class Meeting(db.Model):
     memo_json = db.Column(db.JSON)
     
     # Metadata
-    metadata = db.Column(db.JSON)  # {agenda: "", attendees: "", meeting_type: "", etc}
+    metadata_json = db.Column(db.JSON)  # {agenda: "", attendees: "", meeting_type: "", etc}
     
     # Timestamps
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -97,6 +97,7 @@ class Meeting(db.Model):
             'action_items': self.action_items_original,
             'action_items_english': self.action_items_english,
             'memo_json': self.memo_json,
+            'metadata': self.metadata_json,
         }
 
 
