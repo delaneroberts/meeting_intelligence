@@ -24,7 +24,10 @@ from backend.config import (
     UPLOAD_FOLDER as CONFIG_UPLOAD_FOLDER,
     TRANSCRIPT_FOLDER as CONFIG_TRANSCRIPT_FOLDER,
     FLASK_PORT,
+    SQLALCHEMY_DATABASE_URI,
+    SQLALCHEMY_TRACK_MODIFICATIONS,
 )
+from backend.models import db
 
 
 # ----------------------------
@@ -64,6 +67,10 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 app.config["MAX_CONTENT_LENGTH"] = MAX_CONTENT_LENGTH
+app.config["SQLALCHEMY_DATABASE_URI"] = SQLALCHEMY_DATABASE_URI
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = SQLALCHEMY_TRACK_MODIFICATIONS
+
+db.init_app(app)
 
 # Register backend API blueprint
 app.register_blueprint(api_blueprint)
