@@ -1,0 +1,55 @@
+{
+  "meeting_type": "other",
+  "title": "Discussion on Legal and Financial Matters",
+  "summary_bullets": [
+    "Concerns about hiring a lawyer for legal issues.",
+    "Discussion on financial management and spending habits.",
+    "Mention of family dynamics and financial responsibilities.",
+    "Concerns about the impact of financial decisions on family relationships."
+  ],
+  "key_topics": [
+    "Legal representation",
+    "Financial management",
+    "Family dynamics",
+    "Spending habits",
+    "Communication issues"
+  ],
+  "decisions": [],
+  "action_items": [
+    {
+      "item": "Find a lawyer",
+      "owner": "Unassigned",
+      "due": "Not stated"
+    },
+    {
+      "item": "Discuss financial management strategies",
+      "owner": "Unassigned",
+      "due": "Not stated"
+    }
+  ],
+  "risks_blockers": [],
+  "open_questions": [],
+  "notes_by_section": [
+    {
+      "heading": "Legal Concerns",
+      "bullets": [
+        "Need to find a lawyer for legal issues.",
+        "Concerns about the quality of current legal representation."
+      ]
+    },
+    {
+      "heading": "Financial Management",
+      "bullets": [
+        "Discussion on the importance of managing finances.",
+        "Concerns about excessive spending and financial irresponsibility."
+      ]
+    },
+    {
+      "heading": "Family Dynamics",
+      "bullets": [
+        "Impact of financial decisions on family relationships.",
+        "Discussion about family members' financial habits and responsibilities."
+      ]
+    }
+  ]
+}

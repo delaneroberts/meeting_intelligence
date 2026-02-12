@@ -1,0 +1,182 @@
+2026-02-11 17:54:27,931 [INFO] [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8001
+ * Running on http://10.0.0.65:8001
+2026-02-11 17:54:27,931 [INFO] [33mPress CTRL+C to quit[0m
+2026-02-11 17:54:27,934 [INFO]  * Restarting with watchdog (fsevents)
+2026-02-11 17:54:28,237 [WARNING]  * Debugger is active!
+2026-02-11 17:54:28,243 [INFO]  * Debugger PIN: 435-990-875
+2026-02-11 17:56:54,217 [INFO] [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8001
+ * Running on http://10.0.0.65:8001
+2026-02-11 17:56:54,217 [INFO] [33mPress CTRL+C to quit[0m
+2026-02-11 17:56:54,222 [INFO]  * Restarting with watchdog (fsevents)
+2026-02-11 17:56:54,509 [WARNING]  * Debugger is active!
+2026-02-11 17:56:54,513 [INFO]  * Debugger PIN: 435-990-875
+2026-02-11 17:56:56,984 [INFO] 127.0.0.1 - - [11/Feb/2026 17:56:56] "GET / HTTP/1.1" 200 -
+2026-02-11 17:57:10,335 [INFO] 127.0.0.1 - - [11/Feb/2026 17:57:10] "GET / HTTP/1.1" 200 -
+2026-02-11 17:57:14,205 [INFO] 127.0.0.1 - - [11/Feb/2026 17:57:14] "GET / HTTP/1.1" 200 -
+2026-02-11 17:57:22,399 [INFO] 127.0.0.1 - - [11/Feb/2026 17:57:22] "GET / HTTP/1.1" 200 -
+2026-02-11 17:57:28,301 [INFO] [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8001
+ * Running on http://10.0.0.65:8001
+2026-02-11 17:57:28,301 [INFO] [33mPress CTRL+C to quit[0m
+2026-02-11 17:57:28,305 [INFO]  * Restarting with watchdog (fsevents)
+2026-02-11 17:57:28,595 [WARNING]  * Debugger is active!
+2026-02-11 17:57:28,599 [INFO]  * Debugger PIN: 435-990-875
+2026-02-11 17:57:33,936 [INFO] 127.0.0.1 - - [11/Feb/2026 17:57:33] "GET / HTTP/1.1" 200 -
+2026-02-11 17:58:13,907 [INFO] 127.0.0.1 - - [11/Feb/2026 17:58:13] "GET / HTTP/1.1" 200 -
+2026-02-11 17:58:13,917 [INFO] 127.0.0.1 - - [11/Feb/2026 17:58:13] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-02-11 17:58:18,208 [INFO] 127.0.0.1 - - [11/Feb/2026 17:58:18] "GET / HTTP/1.1" 200 -
+2026-02-11 17:59:18,819 [INFO] 127.0.0.1 - - [11/Feb/2026 17:59:18] "GET / HTTP/1.1" 200 -
+2026-02-11 17:59:18,829 [INFO] 127.0.0.1 - - [11/Feb/2026 17:59:18] "GET / HTTP/1.1" 200 -
+2026-02-11 17:59:34,651 [INFO] 127.0.0.1 - - [11/Feb/2026 17:59:34] "GET / HTTP/1.1" 200 -
+2026-02-11 17:59:51,775 [INFO] 127.0.0.1 - - [11/Feb/2026 17:59:51] "GET / HTTP/1.1" 200 -
+2026-02-11 17:59:51,781 [INFO] 127.0.0.1 - - [11/Feb/2026 17:59:51] "GET /static/script.js HTTP/1.1" 200 -
+2026-02-11 18:01:07,983 [INFO] Saved file to: /Users/delaneroberts/meeting_intelligence/uploads/132_Belvedere_Dr_10.m4a
+2026-02-11 18:01:07,983 [INFO] Transcribing file: /Users/delaneroberts/meeting_intelligence/uploads/132_Belvedere_Dr_10.m4a
+2026-02-11 18:01:49,754 [INFO] HTTP Request: POST https://api.openai.com/v1/audio/transcriptions "HTTP/1.1 200 OK"
+2026-02-11 18:01:49,759 [INFO] Successfully transcribed /Users/delaneroberts/meeting_intelligence/uploads/132_Belvedere_Dr_10.m4a (en) - 2567 characters
+2026-02-11 18:01:50,983 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-11 18:01:50,993 [WARNING] Failed to parse language detection response: Expecting value: line 1 column 1 (char 0)
+2026-02-11 18:01:50,993 [INFO] Text is in Unknown, translating to English
+2026-02-11 18:02:28,838 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-11 18:02:28,843 [INFO] Successfully translated Unknown text to English (2567 chars -> 9434 chars)
+2026-02-11 18:02:28,844 [INFO] Transcript translated from Unknown to English
+2026-02-11 18:02:28,844 [INFO] Saved transcript to: /Users/delaneroberts/meeting_intelligence/transcripts/132_Belvedere_Dr_10.txt
+2026-02-11 18:02:28,845 [INFO] Summarizing transcript (9434 chars), agenda present: False, language: Unknown
+2026-02-11 18:02:33,477 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-11 18:02:33,479 [INFO] Structured summarization succeeded, 0 action items extracted
+2026-02-11 18:02:37,780 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-11 18:02:37,782 [INFO] Translated summary to Unknown
+2026-02-11 18:02:39,212 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-11 18:02:39,214 [INFO] Translated action items to Unknown
+2026-02-11 18:02:39,216 [INFO] Saved memo JSON to: /Users/delaneroberts/meeting_intelligence/transcripts/20260211_180239_215_memo.json
+2026-02-11 18:02:39,216 [INFO] Saved meeting artifacts to: /Users/delaneroberts/meeting_intelligence/transcripts/20260211_180239_215.json
+2026-02-11 18:02:39,216 [INFO] Saved meeting artifacts JSON: /Users/delaneroberts/meeting_intelligence/transcripts/20260211_180239_215.json
+2026-02-11 18:02:39,217 [INFO] Deleted audio file: /Users/delaneroberts/meeting_intelligence/uploads/132_Belvedere_Dr_10.m4a
+2026-02-11 18:02:39,219 [INFO] 127.0.0.1 - - [11/Feb/2026 18:02:39] "POST /process HTTP/1.1" 200 -
+2026-02-11 18:03:58,409 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-11 18:04:44,551 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-11 18:04:44,554 [INFO] 127.0.0.1 - - [11/Feb/2026 18:04:44] "POST /translate_content HTTP/1.1" 200 -
+2026-02-11 20:11:28,129 [INFO] [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8001
+ * Running on http://10.0.0.65:8001
+2026-02-11 20:11:28,130 [INFO] [33mPress CTRL+C to quit[0m
+2026-02-11 20:11:28,130 [INFO]  * Restarting with stat
+2026-02-11 20:11:28,414 [WARNING]  * Debugger is active!
+2026-02-11 20:11:28,425 [INFO]  * Debugger PIN: 144-992-170
+2026-02-11 20:12:47,641 [INFO] 127.0.0.1 - - [11/Feb/2026 20:12:47] "GET / HTTP/1.1" 200 -
+2026-02-11 20:12:47,653 [INFO] 127.0.0.1 - - [11/Feb/2026 20:12:47] "[36mGET /static/script.js HTTP/1.1[0m" 304 -
+2026-02-11 20:13:15,453 [INFO] Deleted old file: /Users/delaneroberts/meeting_intelligence/transcripts/20260211_180239_215.json
+2026-02-11 20:13:15,453 [INFO] Deleted old file: /Users/delaneroberts/meeting_intelligence/transcripts/132_Belvedere_Dr_10.txt
+2026-02-11 20:13:15,454 [INFO] Deleted old file: /Users/delaneroberts/meeting_intelligence/transcripts/20260211_180239_215_memo.json
+2026-02-11 20:13:15,476 [INFO] Saved file to: /Users/delaneroberts/meeting_intelligence/uploads/132_Belvedere_Dr_10.m4a
+2026-02-11 20:13:15,476 [INFO] Transcribing file: /Users/delaneroberts/meeting_intelligence/uploads/132_Belvedere_Dr_10.m4a
+2026-02-11 20:13:51,756 [INFO] HTTP Request: POST https://api.openai.com/v1/audio/transcriptions "HTTP/1.1 200 OK"
+2026-02-11 20:13:51,763 [INFO] Successfully transcribed /Users/delaneroberts/meeting_intelligence/uploads/132_Belvedere_Dr_10.m4a (en) - 2019 characters
+2026-02-11 20:13:53,083 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-11 20:13:53,092 [WARNING] Failed to parse language detection response: Expecting value: line 1 column 1 (char 0)
+2026-02-11 20:13:53,092 [INFO] Text is in Unknown, translating to English
+2026-02-11 20:14:18,272 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-11 20:14:18,274 [INFO] Successfully translated Unknown text to English (2019 chars -> 7173 chars)
+2026-02-11 20:14:18,275 [INFO] Transcript translated from Unknown to English
+2026-02-11 20:14:18,275 [INFO] Saved transcript to: /Users/delaneroberts/meeting_intelligence/transcripts/132_Belvedere_Dr_10.txt
+2026-02-11 20:14:18,276 [INFO] Summarizing transcript (7173 chars), agenda present: False, language: Unknown
+2026-02-11 20:14:23,996 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-11 20:14:23,998 [INFO] Structured summarization succeeded, 1 action items extracted
+2026-02-11 20:14:27,256 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-11 20:14:27,261 [INFO] Translated summary to Unknown
+2026-02-11 20:14:28,690 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-11 20:14:28,695 [INFO] Translated action items to Unknown
+2026-02-11 20:14:28,696 [INFO] Saved memo JSON to: /Users/delaneroberts/meeting_intelligence/transcripts/20260211_201428_695_memo.json
+2026-02-11 20:14:28,697 [INFO] Saved meeting artifacts to: /Users/delaneroberts/meeting_intelligence/transcripts/20260211_201428_695.json
+2026-02-11 20:14:28,697 [INFO] Saved meeting artifacts JSON: /Users/delaneroberts/meeting_intelligence/transcripts/20260211_201428_695.json
+2026-02-11 20:14:28,698 [INFO] Deleted audio file: /Users/delaneroberts/meeting_intelligence/uploads/132_Belvedere_Dr_10.m4a
+2026-02-11 20:14:28,700 [INFO] 127.0.0.1 - - [11/Feb/2026 20:14:28] "POST /process HTTP/1.1" 200 -
+2026-02-12 10:48:05,140 [INFO] [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8001
+ * Running on http://10.0.0.65:8001
+2026-02-12 10:48:05,141 [INFO] [33mPress CTRL+C to quit[0m
+2026-02-12 10:48:05,146 [INFO]  * Restarting with watchdog (fsevents)
+2026-02-12 10:48:05,445 [WARNING]  * Debugger is active!
+2026-02-12 10:48:05,449 [INFO]  * Debugger PIN: 435-990-875
+2026-02-12 10:53:00,853 [INFO] [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8001
+ * Running on http://10.0.0.65:8001
+2026-02-12 10:53:00,854 [INFO] [33mPress CTRL+C to quit[0m
+2026-02-12 10:53:00,860 [INFO]  * Restarting with watchdog (fsevents)
+2026-02-12 10:53:01,167 [WARNING]  * Debugger is active!
+2026-02-12 10:53:01,172 [INFO]  * Debugger PIN: 435-990-875
+2026-02-12 10:53:33,015 [INFO] 127.0.0.1 - - [12/Feb/2026 10:53:33] "GET / HTTP/1.1" 200 -
+2026-02-12 10:53:33,028 [INFO] 127.0.0.1 - - [12/Feb/2026 10:53:33] "[36mGET /static/script.js HTTP/1.1[0m" 304 -
+2026-02-12 10:57:13,078 [INFO] [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8001
+ * Running on http://10.0.0.65:8001
+2026-02-12 10:57:13,078 [INFO] [33mPress CTRL+C to quit[0m
+2026-02-12 11:00:54,130 [INFO] [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8001
+ * Running on http://10.0.0.65:8001
+2026-02-12 11:00:54,130 [INFO] [33mPress CTRL+C to quit[0m
+2026-02-12 11:01:10,711 [INFO] 127.0.0.1 - - [12/Feb/2026 11:01:10] "GET / HTTP/1.1" 200 -
+2026-02-12 11:01:34,048 [INFO] 127.0.0.1 - - [12/Feb/2026 11:01:34] "GET / HTTP/1.1" 200 -
+2026-02-12 11:01:34,059 [INFO] 127.0.0.1 - - [12/Feb/2026 11:01:34] "GET /static/script.js HTTP/1.1" 200 -
+2026-02-12 11:01:34,093 [INFO] 127.0.0.1 - - [12/Feb/2026 11:01:34] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-02-12 11:05:26,645 [INFO] Deleted old file: /Users/delaneroberts/meeting_intelligence/transcripts/20260211_201428_695.json
+2026-02-12 11:05:26,646 [INFO] Deleted old file: /Users/delaneroberts/meeting_intelligence/transcripts/132_Belvedere_Dr_10.txt
+2026-02-12 11:05:26,647 [INFO] Deleted old file: /Users/delaneroberts/meeting_intelligence/transcripts/20260211_201428_695_memo.json
+2026-02-12 11:05:26,665 [INFO] Saved file to: /Users/delaneroberts/meeting_intelligence/uploads/132_Belvedere_Dr_10.m4a
+2026-02-12 11:05:26,665 [INFO] Transcribing file: /Users/delaneroberts/meeting_intelligence/uploads/132_Belvedere_Dr_10.m4a
+2026-02-12 11:06:30,619 [INFO] HTTP Request: POST https://api.openai.com/v1/audio/transcriptions "HTTP/1.1 200 OK"
+2026-02-12 11:06:30,627 [INFO] Successfully transcribed /Users/delaneroberts/meeting_intelligence/uploads/132_Belvedere_Dr_10.m4a (en) - 2324 characters
+2026-02-12 11:06:30,627 [INFO] Source language hint indicates English, no translation needed
+2026-02-12 11:06:30,628 [INFO] Saved transcript to: /Users/delaneroberts/meeting_intelligence/transcripts/132_Belvedere_Dr_10.txt
+2026-02-12 11:06:30,628 [INFO] Summarizing transcript (2324 chars), agenda present: False, language: English
+2026-02-12 11:06:39,018 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-12 11:06:39,027 [INFO] Structured summarization succeeded, 2 action items extracted
+2026-02-12 11:06:39,028 [INFO] Saved memo JSON to: /Users/delaneroberts/meeting_intelligence/transcripts/20260212_110639_028_memo.json
+2026-02-12 11:06:39,029 [INFO] Saved meeting artifacts to: /Users/delaneroberts/meeting_intelligence/transcripts/20260212_110639_028.json
+2026-02-12 11:06:39,029 [INFO] Saved meeting artifacts JSON: /Users/delaneroberts/meeting_intelligence/transcripts/20260212_110639_028.json
+2026-02-12 11:06:39,029 [INFO] Deleted audio file: /Users/delaneroberts/meeting_intelligence/uploads/132_Belvedere_Dr_10.m4a
+2026-02-12 11:06:39,030 [INFO] 127.0.0.1 - - [12/Feb/2026 11:06:39] "POST /process HTTP/1.1" 200 -
+2026-02-12 11:15:28,572 [INFO] [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:8001
+ * Running on http://10.0.0.65:8001
+2026-02-12 11:15:28,573 [INFO] [33mPress CTRL+C to quit[0m
+2026-02-12 11:15:35,383 [INFO] 127.0.0.1 - - [12/Feb/2026 11:15:35] "GET / HTTP/1.1" 200 -
+2026-02-12 11:15:35,696 [INFO] 127.0.0.1 - - [12/Feb/2026 11:15:35] "[36mGET /static/script.js HTTP/1.1[0m" 304 -
+2026-02-12 11:15:47,452 [INFO] Saved file to: /Users/delaneroberts/meeting_intelligence/uploads/132_Belvedere_Dr_10.m4a
+2026-02-12 11:15:47,452 [INFO] Transcribing file: /Users/delaneroberts/meeting_intelligence/uploads/132_Belvedere_Dr_10.m4a
+2026-02-12 11:16:28,638 [INFO] HTTP Request: POST https://api.openai.com/v1/audio/transcriptions "HTTP/1.1 200 OK"
+2026-02-12 11:16:28,643 [INFO] Successfully transcribed /Users/delaneroberts/meeting_intelligence/uploads/132_Belvedere_Dr_10.m4a (en) - 2346 characters
+2026-02-12 11:16:28,647 [INFO] Text contains CJK characters; ignoring English source hint
+2026-02-12 11:16:30,707 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-12 11:16:30,719 [INFO] Detected language: Cantonese (code: yue, is_english: False)
+2026-02-12 11:16:30,719 [INFO] Text is in Cantonese, translating to English
+2026-02-12 11:16:56,227 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-12 11:16:56,233 [INFO] Successfully translated Cantonese text to English (2346 chars -> 7158 chars)
+2026-02-12 11:16:56,234 [INFO] Transcript translated from Cantonese to English
+2026-02-12 11:16:56,235 [INFO] Saved transcript to: /Users/delaneroberts/meeting_intelligence/transcripts/132_Belvedere_Dr_10.txt
+2026-02-12 11:16:56,235 [INFO] Summarizing transcript (7158 chars), agenda present: False, language: Cantonese
+2026-02-12 11:17:03,759 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-12 11:17:03,761 [INFO] Structured summarization succeeded, 0 action items extracted
+2026-02-12 11:17:08,263 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-12 11:17:08,265 [INFO] Translated summary to Cantonese
+2026-02-12 11:17:09,698 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-12 11:17:09,699 [INFO] Translated action items to Cantonese
+2026-02-12 11:17:09,700 [INFO] Saved memo JSON to: /Users/delaneroberts/meeting_intelligence/transcripts/20260212_111709_699_memo.json
+2026-02-12 11:17:09,700 [INFO] Saved meeting artifacts to: /Users/delaneroberts/meeting_intelligence/transcripts/20260212_111709_699.json
+2026-02-12 11:17:09,700 [INFO] Saved meeting artifacts JSON: /Users/delaneroberts/meeting_intelligence/transcripts/20260212_111709_699.json
+2026-02-12 11:17:09,701 [INFO] Deleted audio file: /Users/delaneroberts/meeting_intelligence/uploads/132_Belvedere_Dr_10.m4a
+2026-02-12 11:17:09,702 [INFO] 127.0.0.1 - - [12/Feb/2026 11:17:09] "POST /process HTTP/1.1" 200 -
+2026-02-12 11:18:05,746 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-12 11:18:33,162 [INFO] HTTP Request: POST https://api.openai.com/v1/chat/completions "HTTP/1.1 200 OK"
+2026-02-12 11:18:33,164 [INFO] 127.0.0.1 - - [12/Feb/2026 11:18:33] "POST /translate_content HTTP/1.1" 200 -

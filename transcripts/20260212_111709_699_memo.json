@@ -1,0 +1,45 @@
+{
+  "meeting_type": "other",
+  "title": "Discussion on Legal and Financial Matters",
+  "summary_bullets": [
+    "Concerns about hiring a competent lawyer.",
+    "Discussion on family financial issues and spending habits.",
+    "Mention of family dynamics and relationships.",
+    "Reflections on the impact of money on happiness.",
+    "Insights into personal and familial responsibilities."
+  ],
+  "key_topics": [
+    "Legal representation",
+    "Family finances",
+    "Spending habits",
+    "Family relationships",
+    "Emotional well-being"
+  ],
+  "decisions": [],
+  "action_items": [],
+  "risks_blockers": [],
+  "open_questions": [],
+  "notes_by_section": [
+    {
+      "heading": "Legal Representation",
+      "bullets": [
+        "Concerns about the quality of the current lawyer.",
+        "Need for a more competent lawyer discussed."
+      ]
+    },
+    {
+      "heading": "Family Financial Issues",
+      "bullets": [
+        "Discussion on how money affects family dynamics.",
+        "Concerns about financial management and spending."
+      ]
+    },
+    {
+      "heading": "Family Dynamics",
+      "bullets": [
+        "Mention of various family members and their roles.",
+        "Reflections on relationships and emotional well-being."
+      ]
+    }
+  ]
+}
