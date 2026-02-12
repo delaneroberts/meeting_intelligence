@@ -16,8 +16,8 @@ def seed_defaults(reset: bool = False) -> None:
         db.session.add(user)
 
     defaults = {
-        "default_language": ("Cantonese", "string"),
-        "summary_language": ("Cantonese", "string"),
+        "default_language": ("auto", "string"),
+        "summary_language": ("auto", "string"),
         "auto_detect_qa": ("true", "bool"),
     }
 

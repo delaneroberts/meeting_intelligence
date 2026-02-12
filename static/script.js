@@ -83,8 +83,8 @@ let currentMeetingData = {
 };
 
 let appSettings = {
-  default_language: "English",
-  summary_language: "English",
+  default_language: "auto",
+  summary_language: "auto",
   auto_detect_qa: true
 };
 
@@ -107,15 +107,24 @@ async function loadSettings() {
 
 function updateSettingsInfo() {
   if (!settingsInfo) return;
-  const transcriptLang = appSettings.default_language || "English";
+  const detected = currentMeetingData.originalLanguage || "";
+  const transcriptLang = appSettings.default_language || "auto";
   const summaryLang = appSettings.summary_language || transcriptLang;
-  settingsInfo.textContent = `Defaults: transcript ${transcriptLang}, summary ${summaryLang}`;
+
+  const transcriptLabel = transcriptLang === "auto"
+    ? `Auto${detected ? ` (${detected})` : ""}`
+    : transcriptLang;
+  const summaryLabel = summaryLang === "auto"
+    ? `Auto${detected ? ` (${detected})` : ""}`
+    : summaryLang;
+
+  settingsInfo.textContent = `Defaults: transcript ${transcriptLabel}, summary ${summaryLabel}`;
 }
 
 function syncSettingsForm() {
   if (!defaultLanguageSelect || !summaryLanguageSelect || !autoDetectQaToggle) return;
-  defaultLanguageSelect.value = appSettings.default_language || "English";
-  summaryLanguageSelect.value = appSettings.summary_language || "English";
+  defaultLanguageSelect.value = appSettings.default_language || "auto";
+  summaryLanguageSelect.value = appSettings.summary_language || "auto";
   autoDetectQaToggle.checked = appSettings.auto_detect_qa !== false;
 }
 
@@ -369,8 +378,8 @@ async function processFormData(formData, initialLabel = "Processing…", transcr
     }
 
     // Display content based on settings
-    const summaryPref = (appSettings.summary_language || "").toLowerCase();
-    const transcriptPref = (appSettings.default_language || "").toLowerCase();
+    const summaryPref = (appSettings.summary_language || "auto").toLowerCase();
+    const transcriptPref = (appSettings.default_language || "auto").toLowerCase();
 
     summaryText.textContent =
       summaryPref === "english" && currentMeetingData.englishSummary
