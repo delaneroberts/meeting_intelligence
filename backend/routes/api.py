@@ -18,6 +18,7 @@ from werkzeug.utils import secure_filename
 from io import BytesIO
 
 from ..services import transcription, translation, summarization, qa_detection, export
+from ..models import Setting
 from ..config import UPLOAD_FOLDER, TRANSCRIPT_FOLDER
 
 logger = logging.getLogger(__name__)
@@ -236,6 +237,43 @@ def detect_questions():
     except Exception as e:
         logger.exception("Question detection error: %s", e)
         return jsonify({"questions": [], "error": str(e)}), 500
+
+
+@api.route('/settings', methods=['GET', 'PUT'])
+def settings():
+    """Get or update settings for the default user (Phase 1)."""
+    user_id = 1
+
+    if request.method == 'GET':
+        keys = ["default_language", "summary_language", "auto_detect_qa"]
+        settings_map = {key: Setting.get(key, user_id=user_id) for key in keys}
+        return jsonify({"settings": settings_map})
+
+    payload = request.get_json(silent=True) or {}
+    incoming = payload.get("settings") if isinstance(payload.get("settings"), dict) else payload
+
+    if not isinstance(incoming, dict):
+        return jsonify({"error": "Invalid settings payload."}), 400
+
+    updated = {}
+    for key, value in incoming.items():
+        if isinstance(value, bool):
+            data_type = "bool"
+            stored_value = "true" if value else "false"
+        elif isinstance(value, int):
+            data_type = "int"
+            stored_value = str(value)
+        elif isinstance(value, (dict, list)):
+            data_type = "json"
+            stored_value = value
+        else:
+            data_type = "string"
+            stored_value = str(value)
+
+        Setting.set(key, stored_value, data_type=data_type, user_id=user_id)
+        updated[key] = value
+
+    return jsonify({"status": "ok", "settings": updated})
 
 
 @api.route('/translate_content', methods=['POST'])

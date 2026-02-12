@@ -20,6 +20,7 @@ const summaryText = document.getElementById("summaryText");
 const actionItemsList = document.getElementById("actionItemsList");
 const transcriptText = document.getElementById("transcriptText");
 const transcriptFileInfo = document.getElementById("transcriptFileInfo");
+const settingsInfo = document.getElementById("settingsInfo");
 
 // Copy buttons
 const copySummaryBtn = document.getElementById("copySummaryBtn");
@@ -70,6 +71,37 @@ let currentMeetingData = {
   actionItems: [],
   currentDisplayLanguage: "English" // Track what language is currently displayed
 };
+
+let appSettings = {
+  default_language: "English",
+  summary_language: "English",
+  auto_detect_qa: true
+};
+
+async function loadSettings() {
+  try {
+    const response = await fetch("/api/settings");
+    if (!response.ok) {
+      return;
+    }
+    const data = await response.json();
+    if (data && data.settings) {
+      appSettings = { ...appSettings, ...data.settings };
+      updateSettingsInfo();
+    }
+  } catch (err) {
+    console.warn("Failed to load settings:", err);
+  }
+}
+
+function updateSettingsInfo() {
+  if (!settingsInfo) return;
+  const transcriptLang = appSettings.default_language || "English";
+  const summaryLang = appSettings.summary_language || transcriptLang;
+  settingsInfo.textContent = `Defaults: transcript ${transcriptLang}, summary ${summaryLang}`;
+}
+
+loadSettings();
 
 // ---- Agenda management ----
 
@@ -263,13 +295,28 @@ async function processFormData(formData, initialLabel = "Processing…", transcr
       translationControls.style.display = "none";
     }
 
-    // Display the original language content
-    summaryText.textContent = currentMeetingData.originalSummary;
-    transcriptText.textContent = currentMeetingData.originalTranscript;
+    // Display content based on settings
+    const summaryPref = (appSettings.summary_language || "").toLowerCase();
+    const transcriptPref = (appSettings.default_language || "").toLowerCase();
+
+    summaryText.textContent =
+      summaryPref === "english" && currentMeetingData.englishSummary
+        ? currentMeetingData.englishSummary
+        : currentMeetingData.originalSummary;
+
+    transcriptText.textContent =
+      transcriptPref === "english" && currentMeetingData.englishTranscript
+        ? currentMeetingData.englishTranscript
+        : currentMeetingData.originalTranscript;
 
     actionItemsList.innerHTML = "";
-    if (Array.isArray(currentMeetingData.actionItems) && currentMeetingData.actionItems.length > 0) {
-      currentMeetingData.actionItems.forEach((item) => {
+    const actionItemsToShow =
+      summaryPref === "english" && Array.isArray(currentMeetingData.englishActionItems)
+        ? currentMeetingData.englishActionItems
+        : currentMeetingData.actionItems;
+
+    if (Array.isArray(actionItemsToShow) && actionItemsToShow.length > 0) {
+      actionItemsToShow.forEach((item) => {
         const li = document.createElement("li");
         li.textContent = item;
         actionItemsList.appendChild(li);
@@ -497,9 +544,11 @@ recordBtn.addEventListener("click", async () => {
       updateAutoQADisplay();
 
       // Start auto-detection interval (every 8 seconds)
-      autoDetectionInterval = setInterval(() => {
-        detectAndAnswerQuestions();
-      }, 8000);
+      if (appSettings.auto_detect_qa !== false) {
+        autoDetectionInterval = setInterval(() => {
+          detectAndAnswerQuestions();
+        }, 8000);
+      }
 
       // Start live transcription for coach
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
