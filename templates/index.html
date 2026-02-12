@@ -69,6 +69,9 @@
               <button type="button" class="btn btn-outline-info btn-sm" id="agendaBtn">
                 📋 Add Agenda
               </button>
+              <button type="button" class="btn btn-outline-secondary btn-sm" id="settingsBtn">
+                ⚙️ Settings
+              </button>
               <small id="agendaStatus" class="text-muted"></small>
             </div>
 
@@ -189,6 +192,47 @@
               <pre id="transcriptText" class="bg-body-tertiary p-2 rounded"></pre>
 
               <p class="mt-2 mb-0 text-muted small" id="transcriptFileInfo"></p>
+            </div>
+
+            <!-- Settings Modal -->
+            <div class="modal fade" id="settingsModal" tabindex="-1" aria-hidden="true">
+              <div class="modal-dialog">
+                <div class="modal-content">
+                  <div class="modal-header">
+                    <h5 class="modal-title">Settings</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                  </div>
+                  <div class="modal-body">
+                    <div class="mb-3">
+                      <label class="form-label">Transcript language</label>
+                      <select class="form-select" id="defaultLanguageSelect">
+                        <option value="English">English</option>
+                        <option value="Cantonese">Cantonese</option>
+                        <option value="Mandarin Chinese">Mandarin Chinese</option>
+                      </select>
+                    </div>
+                    <div class="mb-3">
+                      <label class="form-label">Summary language</label>
+                      <select class="form-select" id="summaryLanguageSelect">
+                        <option value="English">English</option>
+                        <option value="Cantonese">Cantonese</option>
+                        <option value="Mandarin Chinese">Mandarin Chinese</option>
+                      </select>
+                    </div>
+                    <div class="form-check">
+                      <input class="form-check-input" type="checkbox" id="autoDetectQaToggle">
+                      <label class="form-check-label" for="autoDetectQaToggle">
+                        Auto-detect Q&A during live recording
+                      </label>
+                    </div>
+                    <small class="text-muted d-block mt-2" id="settingsStatus"></small>
+                  </div>
+                  <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                    <button type="button" class="btn btn-primary" id="settingsSaveBtn">Save settings</button>
+                  </div>
+                </div>
+              </div>
             </div>
 
           </div>

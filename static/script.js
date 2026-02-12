@@ -46,6 +46,16 @@ const agendaFile = document.getElementById("agendaFile");
 const agendaSaveBtn = document.getElementById("agendaSaveBtn");
 const agendaClearBtn = document.getElementById("agendaClearBtn");
 
+// Settings elements
+const settingsBtn = document.getElementById("settingsBtn");
+const settingsModalEl = document.getElementById("settingsModal");
+const settingsModal = settingsModalEl ? new bootstrap.Modal(settingsModalEl) : null;
+const defaultLanguageSelect = document.getElementById("defaultLanguageSelect");
+const summaryLanguageSelect = document.getElementById("summaryLanguageSelect");
+const autoDetectQaToggle = document.getElementById("autoDetectQaToggle");
+const settingsSaveBtn = document.getElementById("settingsSaveBtn");
+const settingsStatus = document.getElementById("settingsStatus");
+
 // Live recording elements
 const recordBtn = document.getElementById("recordBtn");
 const pauseBtn = document.getElementById("pauseBtn");
@@ -88,6 +98,7 @@ async function loadSettings() {
     if (data && data.settings) {
       appSettings = { ...appSettings, ...data.settings };
       updateSettingsInfo();
+      syncSettingsForm();
     }
   } catch (err) {
     console.warn("Failed to load settings:", err);
@@ -99,6 +110,68 @@ function updateSettingsInfo() {
   const transcriptLang = appSettings.default_language || "English";
   const summaryLang = appSettings.summary_language || transcriptLang;
   settingsInfo.textContent = `Defaults: transcript ${transcriptLang}, summary ${summaryLang}`;
+}
+
+function syncSettingsForm() {
+  if (!defaultLanguageSelect || !summaryLanguageSelect || !autoDetectQaToggle) return;
+  defaultLanguageSelect.value = appSettings.default_language || "English";
+  summaryLanguageSelect.value = appSettings.summary_language || "English";
+  autoDetectQaToggle.checked = appSettings.auto_detect_qa !== false;
+}
+
+async function saveSettings() {
+  if (!defaultLanguageSelect || !summaryLanguageSelect || !autoDetectQaToggle) return;
+  const payload = {
+    default_language: defaultLanguageSelect.value,
+    summary_language: summaryLanguageSelect.value,
+    auto_detect_qa: autoDetectQaToggle.checked
+  };
+
+  if (settingsStatus) {
+    settingsStatus.textContent = "Saving…";
+  }
+
+  try {
+    const response = await fetch("/api/settings", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ settings: payload })
+    });
+
+    if (!response.ok) {
+      throw new Error(`Save failed (${response.status})`);
+    }
+
+    const data = await response.json();
+    if (data && data.settings) {
+      appSettings = { ...appSettings, ...data.settings };
+      updateSettingsInfo();
+      syncSettingsForm();
+    }
+
+    if (settingsStatus) {
+      settingsStatus.textContent = "Saved.";
+    }
+  } catch (err) {
+    if (settingsStatus) {
+      settingsStatus.textContent = "Save failed.";
+    }
+    console.warn("Failed to save settings:", err);
+  }
+}
+
+if (settingsBtn && settingsModal) {
+  settingsBtn.addEventListener("click", () => {
+    if (settingsStatus) settingsStatus.textContent = "";
+    syncSettingsForm();
+    settingsModal.show();
+  });
+}
+
+if (settingsSaveBtn) {
+  settingsSaveBtn.addEventListener("click", saveSettings);
 }
 
 loadSettings();
