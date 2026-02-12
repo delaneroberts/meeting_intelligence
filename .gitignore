@@ -1,0 +1,16 @@
+.DS_Store
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+.env
+.venv/
+venv/
+logs/
+transcripts/
+uploads/
+.pytest_cache/
+.mypy_cache/
+.vscode/
+.idea/
