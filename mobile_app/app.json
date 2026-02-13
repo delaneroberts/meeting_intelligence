@@ -1,0 +1,21 @@
+{
+    "expo": {
+        "name": "Meeting Intelligence",
+        "slug": "meeting-intelligence-mobile",
+        "scheme": "meeting-intelligence",
+        "version": "0.1.0",
+        "orientation": "portrait",
+        "userInterfaceStyle": "automatic",
+        "assetBundlePatterns": [
+            "**/*"
+        ],
+        "ios": {
+            "supportsTablet": true
+        },
+        "android": {
+            "adaptiveIcon": {
+                "backgroundColor": "#0F172A"
+            }
+        }
+    }
+}
