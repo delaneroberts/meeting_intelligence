@@ -14,6 +14,7 @@ export default function App() {
     const [meetingName, setMeetingName] = useState("New Meeting");
     const [showUploadModal, setShowUploadModal] = useState(false);
     const [libraryItems, setLibraryItems] = useState([]);
+    const [openDetailRecordId, setOpenDetailRecordId] = useState(null);
     const [settings, setSettings] = useState({
         recordingQuality: "Standard",
         autoTranscribe: true,
@@ -63,8 +64,20 @@ export default function App() {
         setLibraryItems((current) => [record, ...current]);
     };
 
+    const handleShowMeetingDetails = (recordId) => {
+        setOpenDetailRecordId(recordId);
+        setActiveScreen("home");
+        setShowUploadModal(false);
+    };
+
     const handleDeleteRecording = (recordId) => {
         setLibraryItems((current) => current.filter((item) => item.id !== recordId));
+    };
+
+    const handleUpdateRecording = (recordId, updates) => {
+        setLibraryItems((current) =>
+            current.map((item) => (item.id === recordId ? { ...item, ...updates } : item))
+        );
     };
 
     const handleRefreshLibrary = async () => {
@@ -92,6 +105,7 @@ export default function App() {
                         settings={settings}
                         onSaveRecording={handleSaveRecording}
                         onTranscribeAndSummarize={handleTranscribeAndSummarize}
+                        onShowMeetingDetails={handleShowMeetingDetails}
                     />
                 ) : activeScreen === "creatingSummary" ? (
                     <CreatingSummaryScreen meetingName={meetingName} onBack={handleBackHome} />
@@ -103,8 +117,11 @@ export default function App() {
                             libraryItems={libraryItems}
                             onLibraryOpen={handleRefreshLibrary}
                             onDeleteRecording={handleDeleteRecording}
+                            onUpdateRecording={handleUpdateRecording}
                             settings={settings}
                             onSettingsChange={handleSettingsChange}
+                            openDetailRecordId={openDetailRecordId}
+                            onDetailOpened={() => setOpenDetailRecordId(null)}
                         />
                         <AudioFileScreen
                             meetingName={meetingName}

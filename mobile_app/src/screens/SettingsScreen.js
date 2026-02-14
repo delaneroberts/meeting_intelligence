@@ -54,6 +54,7 @@ export default function SettingsScreen({
         recordingQuality = "Standard",
         autoTranscribe = true,
         autoSummary = true,
+    promptSummaryLength = true,
         summaryLength = "Medium",
         meetingNameFormat = "Untitled {date} {time}",
         backgroundRecording = false,
@@ -124,6 +125,13 @@ export default function SettingsScreen({
                         label="Auto-generate summary"
                         value={autoSummary}
                         onValueChange={(value) => handleChange("autoSummary", value)}
+                    />
+                    <SettingToggle
+                        label="Prompt for summary length"
+                        value={promptSummaryLength}
+                        onValueChange={(value) =>
+                            handleChange("promptSummaryLength", value)
+                        }
                     />
                     <Text style={styles.sectionLabel}>Preferred summary length</Text>
                     <OptionGroup

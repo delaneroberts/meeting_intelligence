@@ -8,11 +8,14 @@ import {
     TouchableOpacity,
     Image,
     TextInput,
-    Share
+    Share,
+    ScrollView
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
+import Constants from "expo-constants";
 import { Audio } from "expo-av";
+import * as Clipboard from "expo-clipboard";
 import {
     GestureHandlerRootView,
     State,
@@ -22,6 +25,109 @@ import {
 import MeetingNameScreen from "./MeetingNameScreen";
 import appConfig from "../config/appConfig";
 import SettingsScreen from "./SettingsScreen";
+import CreatingSummaryScreen from "./CreatingSummaryScreen";
+
+const TRANSLATE_LANGUAGES = [
+    "Afrikaans",
+    "Albanian",
+    "Amharic",
+    "Arabic",
+    "Armenian",
+    "Assamese",
+    "Azerbaijani",
+    "Bashkir",
+    "Basque",
+    "Belarusian",
+    "Bengali",
+    "Bosnian",
+    "Breton",
+    "Bulgarian",
+    "Burmese",
+    "Castilian",
+    "Catalan",
+    "Chinese",
+    "Croatian",
+    "Czech",
+    "Danish",
+    "Dutch",
+    "English",
+    "Estonian",
+    "Faroese",
+    "Finnish",
+    "French",
+    "Galician",
+    "Georgian",
+    "German",
+    "Greek",
+    "Gujarati",
+    "Haitian Creole",
+    "Hausa",
+    "Hawaiian",
+    "Hebrew",
+    "Hindi",
+    "Hungarian",
+    "Icelandic",
+    "Indonesian",
+    "Italian",
+    "Japanese",
+    "Javanese",
+    "Kannada",
+    "Kazakh",
+    "Khmer",
+    "Korean",
+    "Lao",
+    "Latin",
+    "Latvian",
+    "Lithuanian",
+    "Luxembourgish",
+    "Macedonian",
+    "Malagasy",
+    "Malay",
+    "Malayalam",
+    "Maltese",
+    "Maori",
+    "Marathi",
+    "Mongolian",
+    "Nepali",
+    "Norwegian",
+    "Nynorsk",
+    "Occitan",
+    "Pashto",
+    "Persian",
+    "Polish",
+    "Portuguese",
+    "Punjabi",
+    "Romanian",
+    "Russian",
+    "Sanskrit",
+    "Serbian",
+    "Shona",
+    "Sindhi",
+    "Sinhala",
+    "Slovak",
+    "Slovenian",
+    "Somali",
+    "Spanish",
+    "Sundanese",
+    "Swahili",
+    "Swedish",
+    "Tagalog",
+    "Tajik",
+    "Tamil",
+    "Tatar",
+    "Telugu",
+    "Thai",
+    "Tibetan",
+    "Turkish",
+    "Turkmen",
+    "Ukrainian",
+    "Urdu",
+    "Uzbek",
+    "Vietnamese",
+    "Welsh",
+    "Yiddish",
+    "Yoruba"
+];
 
 export default function HomeScreen({
     onStartRecording,
@@ -29,8 +135,11 @@ export default function HomeScreen({
     libraryItems = [],
     onLibraryOpen,
     onDeleteRecording,
+    onUpdateRecording,
     settings,
-    onSettingsChange
+    onSettingsChange,
+    openDetailRecordId,
+    onDetailOpened
 }) {
     const [showMeetingName, setShowMeetingName] = useState(false);
     const [showAgendaUpload, setShowAgendaUpload] = useState(false);
@@ -44,6 +153,28 @@ export default function HomeScreen({
     const [materialsUploadCount] = useState(0);
     const [selectedLibraryItem, setSelectedLibraryItem] = useState(null);
     const [showLibraryDetail, setShowLibraryDetail] = useState(false);
+    const [showSummaryProgress, setShowSummaryProgress] = useState(false);
+    const [showSummaryLengthModal, setShowSummaryLengthModal] = useState(false);
+    const [selectedSummaryLength, setSelectedSummaryLength] = useState("Medium");
+    const [showSummaryModal, setShowSummaryModal] = useState(false);
+    const [summaryText, setSummaryText] = useState("");
+    const [summaryError, setSummaryError] = useState("");
+    const [rememberSummaryLength, setRememberSummaryLength] = useState(false);
+    const [showSummaryTranslateDropdown, setShowSummaryTranslateDropdown] = useState(false);
+    const [summaryTranslatedLanguage, setSummaryTranslatedLanguage] = useState("");
+    const [isSummaryTranslating, setIsSummaryTranslating] = useState(false);
+    const [showTranscriptProgress, setShowTranscriptProgress] = useState(false);
+    const [showTranscriptModal, setShowTranscriptModal] = useState(false);
+    const [transcriptText, setTranscriptText] = useState("");
+    const [transcriptLanguage, setTranscriptLanguage] = useState("");
+    const [transcriptError, setTranscriptError] = useState("");
+    const [showTranslateDropdown, setShowTranslateDropdown] = useState(false);
+    const [translateError, setTranslateError] = useState("");
+    const [isTranslating, setIsTranslating] = useState(false);
+    const [translatedLanguage, setTranslatedLanguage] = useState("");
+    const [isTranscribing, setIsTranscribing] = useState(false);
+    const transcriptAbortRef = useRef(null);
+    const transcriptTimeoutRef = useRef(null);
     const swipeableRefs = useRef(new Map());
     const [audioLoading, setAudioLoading] = useState(false);
     const [isPlaying, setIsPlaying] = useState(false);
@@ -77,10 +208,28 @@ export default function HomeScreen({
                 statusLabel,
                 recordingUri: item.recordingUri,
                 summary: item.summary || "",
-                transcript: item.transcript || ""
+                summaryLanguage: item.summaryLanguage,
+                transcript: item.transcript || "",
+                transcriptCreatedAt: item.transcriptCreatedAt,
+                transcriptLanguage: item.transcriptLanguage
             };
         });
     }, [libraryItems]);
+
+    useEffect(() => {
+        if (!openDetailRecordId) {
+            return;
+        }
+        const targetRecord = libraryItems.find((item) => item.id === openDetailRecordId);
+        if (!targetRecord) {
+            return;
+        }
+        setSelectedLibraryItem(targetRecord);
+        setShowLibraryDetail(true);
+        setShowLibraryModal(false);
+        setShowSettingsModal(false);
+        onDetailOpened?.();
+    }, [openDetailRecordId, libraryItems, onDetailOpened]);
 
     const formattedTimestamp = useMemo(() => {
         const now = new Date();
@@ -166,7 +315,470 @@ export default function HomeScreen({
     const handleLibraryDetailClose = () => {
         setShowLibraryDetail(false);
         setSelectedLibraryItem(null);
+        setShowTranslateDropdown(false);
+        setShowSummaryTranslateDropdown(false);
         setShowLibraryModal(true);
+    };
+
+    const handleSummaryAction = () => {
+        if (!selectedLibraryItem) {
+            return;
+        }
+        const defaultLength = settings?.summaryLength || "Medium";
+        const shouldPrompt = settings?.promptSummaryLength !== false;
+        setSelectedSummaryLength(defaultLength);
+        setSummaryError("");
+        setRememberSummaryLength(false);
+        setShowLibraryDetail(false);
+        if (!selectedLibraryItem?.transcript) {
+            setShowSummaryProgress(true);
+            transcribeRecording(selectedLibraryItem, {
+                showTranscriptModal: false,
+                onComplete: ({ transcriptValue }) => {
+                    setShowSummaryProgress(false);
+                    if (!shouldPrompt) {
+                        handleSummaryLengthSelect(defaultLength, {
+                            skipSettingsUpdate: true,
+                            transcriptOverride: transcriptValue
+                        });
+                        return;
+                    }
+                    setShowSummaryLengthModal(true);
+                },
+                onError: (message) => {
+                    setShowSummaryProgress(false);
+                    setSummaryError(message || "Transcription failed.");
+                    setShowLibraryDetail(true);
+                }
+            });
+            return;
+        }
+        if (!shouldPrompt) {
+            handleSummaryLengthSelect(defaultLength, {
+                skipSettingsUpdate: true
+            });
+            return;
+        }
+        setShowSummaryLengthModal(true);
+    };
+
+    const handleTranscriptAction = () => {
+        if (isTranscribing) {
+            return;
+        }
+        setShowLibraryDetail(false);
+        setShowTranscriptProgress(true);
+        setShowTranslateDropdown(false);
+        setTranscriptError("");
+        setTranscriptText("");
+        setTranscriptLanguage("");
+        transcribeRecording(selectedLibraryItem);
+    };
+
+    const handleSummaryProgressClose = () => {
+        setShowSummaryProgress(false);
+        setShowLibraryDetail(true);
+    };
+
+    const handleSummaryModalClose = () => {
+        setShowSummaryModal(false);
+        setShowLibraryDetail(true);
+    };
+
+    const handleSummaryLengthCancel = () => {
+        setShowSummaryLengthModal(false);
+        setShowLibraryDetail(true);
+    };
+
+    const handleTranscriptProgressClose = () => {
+        if (transcriptAbortRef.current) {
+            transcriptAbortRef.current.abort();
+        }
+        if (transcriptTimeoutRef.current) {
+            clearTimeout(transcriptTimeoutRef.current);
+        }
+        setIsTranscribing(false);
+        setShowTranscriptProgress(false);
+        setShowLibraryDetail(true);
+    };
+
+    const handleTranscriptModalClose = () => {
+        setShowTranscriptModal(false);
+        setShowLibraryDetail(true);
+    };
+
+    const handleSummaryOpen = () => {
+        if (!selectedLibraryItem?.summary) {
+            return;
+        }
+        setSummaryText(selectedLibraryItem.summary);
+        setSummaryTranslatedLanguage(selectedLibraryItem.summaryLanguage || "");
+        setSummaryError("");
+        setShowSummaryModal(true);
+        setShowLibraryDetail(false);
+    };
+
+    const handleSummaryTranslateToggle = () => {
+        if (!selectedLibraryItem?.summary) {
+            return;
+        }
+        setSummaryError("");
+        setShowSummaryTranslateDropdown((prev) => !prev);
+    };
+
+    const handleCopySummary = async () => {
+        const textToCopy = summaryError
+            ? summaryError
+            : summaryText || selectedLibraryItem?.summary || "";
+        if (!textToCopy) {
+            return;
+        }
+        await Clipboard.setStringAsync(textToCopy);
+    };
+
+    const getSummaryPreview = (summary) => {
+        if (!summary) {
+            return "";
+        }
+        return summary
+            .split("\n")
+            .map((line) => line.trim())
+            .filter(Boolean)
+            .slice(0, 2)
+            .join("\n");
+    };
+
+    const handleCopyTranscript = async () => {
+        const textToCopy = transcriptError
+            ? transcriptError
+            : transcriptText || selectedLibraryItem?.transcript || "";
+        if (!textToCopy) {
+            return;
+        }
+        await Clipboard.setStringAsync(textToCopy);
+    };
+
+    const handleTranscriptOpen = () => {
+        if (!selectedLibraryItem?.transcript) {
+            return;
+        }
+        setShowTranslateDropdown(false);
+        setTranscriptText(selectedLibraryItem.transcript);
+        setTranscriptLanguage(selectedLibraryItem.transcriptLanguage || "");
+        setTranslatedLanguage(selectedLibraryItem.transcriptTranslatedLanguage || "");
+        setTranscriptError("");
+        setShowTranscriptModal(true);
+        setShowLibraryDetail(false);
+    };
+
+    const buildSummaryTemplate = (length, transcriptOverride = "") => {
+        const meetingTitle = selectedLibraryItem?.title || "Meeting";
+        const transcriptSource = transcriptOverride || selectedLibraryItem?.transcript || "";
+        const cleanedTranscript = transcriptSource.replace(/\s+/g, " ").trim();
+        const sentences = cleanedTranscript
+            ? cleanedTranscript
+                .split(/(?<=[.!?])\s+/)
+                .map((sentence) => sentence.trim())
+                .filter(Boolean)
+            : [];
+        if (!sentences.length) {
+            return "Summary unavailable. A transcript is required to generate a summary.";
+        }
+        const lengthConfig = {
+            Short: { points: 3, actions: 2 },
+            Medium: { points: 5, actions: 3 },
+            Detailed: { points: 7, actions: 5 }
+        };
+        const { points, actions } = lengthConfig[length] || lengthConfig.Medium;
+        const actionKeywords = /(action|todo|follow up|follow-up|next step|assign|owner)/i;
+        const extractedActions = sentences.filter((sentence) => actionKeywords.test(sentence));
+        const pointsList = sentences.slice(0, points);
+        const actionsList = extractedActions.slice(0, actions);
+        return [
+            `${meetingTitle} — ${length} Summary`,
+            "",
+            "Main meeting points:",
+            ...pointsList.map((point) => `• ${point}`),
+            "",
+            "Action items:",
+            ...(actionsList.length
+                ? actionsList.map((item) => `• ${item}`)
+                : ["• None captured in transcript."])
+        ].join("\n");
+    };
+
+    const handleSummaryLengthSelect = (length, options = {}) => {
+        if (!selectedLibraryItem) {
+            setShowSummaryLengthModal(false);
+            return;
+        }
+        setSelectedSummaryLength(length);
+        setShowSummaryLengthModal(false);
+        const summaryTemplate = buildSummaryTemplate(length, options.transcriptOverride);
+        const summaryLanguage = settings?.language || "English";
+        setSummaryText(summaryTemplate);
+        setSummaryTranslatedLanguage(summaryLanguage);
+        setSummaryError("");
+        const updatedAt = new Date().toISOString();
+        onUpdateRecording?.(selectedLibraryItem.id, {
+            summary: summaryTemplate,
+            summaryLanguage,
+            summaryUpdatedAt: updatedAt
+        });
+        if ((rememberSummaryLength || options.forceRemember) && !options.skipSettingsUpdate) {
+            onSettingsChange?.({
+                summaryLength: length,
+                promptSummaryLength: false
+            });
+        }
+        setSelectedLibraryItem((current) =>
+            current && current.id === selectedLibraryItem.id
+                ? {
+                    ...current,
+                    summary: summaryTemplate,
+                    summaryLanguage,
+                    summaryUpdatedAt: updatedAt
+                }
+                : current
+        );
+        setShowSummaryModal(true);
+        setShowLibraryDetail(false);
+    };
+
+    const handleSummaryTranslate = async (targetLanguage) => {
+        if (!selectedLibraryItem?.summary || isSummaryTranslating) {
+            return;
+        }
+        const apiBaseUrl = resolveApiBaseUrl();
+        if (!apiBaseUrl) {
+            setSummaryError(
+                "Cannot reach translation service. Set apiBaseUrl to your machine IP."
+            );
+            return;
+        }
+        setSummaryError("");
+        setIsSummaryTranslating(true);
+        try {
+            const response = await fetch(`${apiBaseUrl}/api/translate_content`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    summary: selectedLibraryItem.summary,
+                    transcript: selectedLibraryItem.summary,
+                    target_language: targetLanguage
+                })
+            });
+            const payload = await response.json();
+            if (!response.ok) {
+                const message = payload?.error || "Translation failed.";
+                throw new Error(message);
+            }
+            const translatedSummary = payload?.translated_transcript || "";
+            if (!translatedSummary) {
+                throw new Error("Translation returned an empty response.");
+            }
+            setSummaryText(translatedSummary);
+            setSummaryTranslatedLanguage(targetLanguage);
+            setShowSummaryTranslateDropdown(false);
+            const updatedAt = new Date().toISOString();
+            onUpdateRecording?.(selectedLibraryItem.id, {
+                summary: translatedSummary,
+                summaryLanguage: targetLanguage,
+                summaryUpdatedAt: updatedAt
+            });
+            setSelectedLibraryItem((current) =>
+                current && current.id === selectedLibraryItem.id
+                    ? {
+                        ...current,
+                        summary: translatedSummary,
+                        summaryLanguage: targetLanguage,
+                        summaryUpdatedAt: updatedAt
+                    }
+                    : current
+            );
+        } catch (error) {
+            setSummaryError(error?.message || "Translation failed.");
+        } finally {
+            setIsSummaryTranslating(false);
+        }
+    };
+
+    const handleTranslateToggle = () => {
+        if (!selectedLibraryItem?.transcript) {
+            return;
+        }
+        setTranslateError("");
+        setShowTranslateDropdown((prev) => !prev);
+    };
+
+    const handleTranslateTranscript = async (targetLanguage) => {
+        if (!selectedLibraryItem?.transcript || isTranslating) {
+            return;
+        }
+        const apiBaseUrl = resolveApiBaseUrl();
+        if (!apiBaseUrl) {
+            setTranslateError(
+                "Cannot reach translation service. Set apiBaseUrl to your machine IP."
+            );
+            return;
+        }
+        setIsTranslating(true);
+        setTranslateError("");
+        try {
+            const response = await fetch(`${apiBaseUrl}/api/translate_content`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    summary: selectedLibraryItem.summary || selectedLibraryItem.transcript,
+                    transcript: selectedLibraryItem.transcript,
+                    target_language: targetLanguage
+                })
+            });
+            const payload = await response.json();
+            if (!response.ok) {
+                const message = payload?.error || "Translation failed.";
+                throw new Error(message);
+            }
+            const translatedTranscript = payload?.translated_transcript || "";
+            const updatedAt = new Date().toISOString();
+            setTranscriptText(translatedTranscript);
+            setTranslatedLanguage(targetLanguage);
+            setShowTranslateDropdown(false);
+            setShowTranscriptModal(true);
+            onUpdateRecording?.(selectedLibraryItem.id, {
+                transcriptTranslatedText: translatedTranscript,
+                transcriptTranslatedLanguage: targetLanguage,
+                transcriptTranslatedAt: updatedAt
+            });
+            setSelectedLibraryItem((current) =>
+                current && current.id === selectedLibraryItem.id
+                    ? {
+                        ...current,
+                        transcriptTranslatedText: translatedTranscript,
+                        transcriptTranslatedLanguage: targetLanguage,
+                        transcriptTranslatedAt: updatedAt
+                    }
+                    : current
+            );
+        } catch (error) {
+            setTranslateError(error?.message || "Translation failed.");
+        } finally {
+            setIsTranslating(false);
+        }
+    };
+
+    const resolveApiBaseUrl = () => {
+        if (appConfig.apiBaseUrl && appConfig.apiBaseUrl !== "auto") {
+            return appConfig.apiBaseUrl;
+        }
+        const hostUri =
+            Constants.expoConfig?.hostUri ||
+            Constants.manifest?.hostUri ||
+            Constants.manifest?.debuggerHost;
+        if (!hostUri) {
+            return "";
+        }
+        const host = hostUri.split(":")[0];
+        return `http://${host}:8001`;
+    };
+
+    const transcribeRecording = async (item, options = {}) => {
+        const { onComplete, onError, showTranscriptModal = true } = options;
+        const fail = (message) => {
+            setTranscriptError(message);
+            setShowTranscriptProgress(false);
+            if (showTranscriptModal) {
+                setShowTranscriptModal(true);
+            }
+            onError?.(message);
+        };
+        if (!item?.recordingUri) {
+            fail("Recording not available for transcription.");
+            return;
+        }
+        const apiBaseUrl = resolveApiBaseUrl();
+        if (!apiBaseUrl) {
+            fail("Cannot reach transcription service. Set apiBaseUrl to your machine IP.");
+            return;
+        }
+        const controller = new AbortController();
+        transcriptAbortRef.current = controller;
+        setIsTranscribing(true);
+        let transcriptValue = "";
+        let languageValue = "";
+        let errorMessage = "";
+        try {
+            transcriptTimeoutRef.current = setTimeout(() => {
+                controller.abort();
+            }, 30000);
+            const formData = new FormData();
+            formData.append("audio_file", {
+                uri: item.recordingUri,
+                name: `${item.title || "meeting"}.m4a`,
+                type: "audio/m4a"
+            });
+            const response = await fetch(`${apiBaseUrl}/api/process`, {
+                method: "POST",
+                body: formData,
+                signal: controller.signal
+            });
+            const payload = await response.json();
+            if (!response.ok) {
+                const message = payload?.error || "Transcription failed.";
+                throw new Error(message);
+            }
+            transcriptValue = payload?.transcript || "";
+            languageValue = payload?.original_language || "";
+            const createdAt = new Date().toISOString();
+            setTranscriptText(transcriptValue);
+            setTranscriptLanguage(languageValue);
+            setTranslatedLanguage("");
+            onUpdateRecording?.(item.id, {
+                transcript: transcriptValue,
+                transcriptLanguage: languageValue,
+                transcriptCreatedAt: createdAt,
+                transcriptTranslatedText: "",
+                transcriptTranslatedLanguage: "",
+                transcriptTranslatedAt: "",
+                status: "saved"
+            });
+            setSelectedLibraryItem((current) =>
+                current && current.id === item.id
+                    ? {
+                        ...current,
+                        transcript: transcriptValue,
+                        transcriptLanguage: languageValue,
+                        transcriptCreatedAt: createdAt,
+                        transcriptTranslatedText: "",
+                        transcriptTranslatedLanguage: "",
+                        transcriptTranslatedAt: "",
+                        status: "saved"
+                    }
+                    : current
+            );
+            onComplete?.({ transcriptValue, languageValue });
+        } catch (error) {
+            errorMessage =
+                error?.name === "AbortError"
+                    ? "Transcription cancelled."
+                    : error?.message || "Transcription failed.";
+            if (error?.name === "AbortError") {
+                setTranscriptError("Transcription cancelled.");
+            } else {
+                setTranscriptError(error?.message || "Transcription failed.");
+            }
+            onError?.(errorMessage);
+        } finally {
+            if (transcriptTimeoutRef.current) {
+                clearTimeout(transcriptTimeoutRef.current);
+            }
+            transcriptAbortRef.current = null;
+            setIsTranscribing(false);
+            setShowTranscriptProgress(false);
+            if (showTranscriptModal) {
+                setShowTranscriptModal(true);
+            }
+        }
     };
 
     const formatTime = (millis) => {
@@ -177,6 +789,23 @@ export default function HomeScreen({
         const minutes = Math.floor(totalSeconds / 60);
         const seconds = totalSeconds % 60;
         return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+    };
+
+    const formatTimestamp = (value) => {
+        if (!value) {
+            return "";
+        }
+        const date = new Date(value);
+        const dateLabel = date.toLocaleDateString(undefined, {
+            month: "2-digit",
+            day: "2-digit",
+            year: "2-digit"
+        });
+        const timeLabel = date.toLocaleTimeString(undefined, {
+            hour: "2-digit",
+            minute: "2-digit"
+        });
+        return `Created ${dateLabel} ${timeLabel}`;
     };
 
     const handlePlaybackStatus = (status) => {
@@ -248,6 +877,37 @@ export default function HomeScreen({
         await Share.share({
             url: recordingUri,
             message: "Meeting recording"
+        });
+    };
+
+    const handleShareSummary = async () => {
+        const summaryText = selectedLibraryItem?.summary;
+        if (!summaryText) {
+            return;
+        }
+        const meetingTitle = selectedLibraryItem?.title || "Meeting";
+        const summaryLanguage = selectedLibraryItem?.summaryLanguage
+            ? `Language: ${selectedLibraryItem.summaryLanguage}`
+            : "Language: Unknown";
+        await Share.share({
+            title: "Meeting summary",
+            message: `${meetingTitle}\n${summaryLanguage}\n\n${summaryText}`
+        });
+    };
+
+    const handleShareTranscript = async () => {
+        const transcriptToShare =
+            transcriptText || selectedLibraryItem?.transcript || "";
+        if (!transcriptToShare) {
+            return;
+        }
+        const meetingTitle = selectedLibraryItem?.title || "Meeting";
+        const languageLabel = selectedLibraryItem?.transcriptLanguage
+            ? `Language: ${selectedLibraryItem.transcriptLanguage}`
+            : "Language: Unknown";
+        await Share.share({
+            title: "Meeting transcript",
+            message: `${meetingTitle}\n${languageLabel}\n\n${transcriptToShare}`
         });
     };
 
@@ -625,7 +1285,7 @@ export default function HomeScreen({
                             </View>
                             <Text style={styles.detailSectionText}>
                                 {selectedLibraryItem?.recordingUri
-                                    ? "Saved on device"
+                                    ? `Recording length: ${formatTime(playbackDuration)}`
                                     : "Recording not available"}
                             </Text>
                             <View style={styles.recordingControls}>
@@ -691,36 +1351,376 @@ export default function HomeScreen({
                             </View>
                         </View>
 
-                        <View style={styles.detailSection}>
+                        <TouchableOpacity
+                            style={styles.detailSection}
+                            activeOpacity={0.9}
+                            onPress={handleSummaryOpen}
+                            disabled={!selectedLibraryItem?.summary}
+                        >
                             <View style={styles.detailSectionHeader}>
                                 <View style={styles.detailIconBubble}>
                                     <Ionicons name="document-text-outline" size={18} color="#1D71B8" />
                                 </View>
                                 <Text style={styles.detailSectionTitle}>Summary</Text>
                             </View>
+                            <Text style={styles.summaryHintText}>
+                                will create transcript if none exists
+                            </Text>
+                            <View style={styles.detailSectionActionsRow}>
+                                <View style={styles.detailSectionActionGroup}>
+                                    <TouchableOpacity
+                                        style={styles.actionButton}
+                                        onPress={handleSummaryAction}
+                                    >
+                                        <Text style={styles.actionButtonText}>
+                                            {selectedLibraryItem?.summary ? "Replace" : "Create"}
+                                        </Text>
+                                    </TouchableOpacity>
+                                    <View style={styles.translateDropdown}>
+                                        <TouchableOpacity
+                                            style={styles.translateDropdownToggle}
+                                            onPress={handleSummaryTranslateToggle}
+                                            disabled={!selectedLibraryItem?.summary}
+                                        >
+                                            <Text style={styles.translateDropdownText}>Translate to</Text>
+                                            <Ionicons
+                                                name={
+                                                    showSummaryTranslateDropdown
+                                                        ? "chevron-up"
+                                                        : "chevron-down"
+                                                }
+                                                size={14}
+                                                color="#FFFFFF"
+                                            />
+                                        </TouchableOpacity>
+                                        {showSummaryTranslateDropdown ? (
+                                            <View style={styles.translateDropdownMenu}>
+                                                <ScrollView
+                                                    style={styles.translateDropdownScroll}
+                                                    showsVerticalScrollIndicator
+                                                >
+                                                    {TRANSLATE_LANGUAGES.map((language) => (
+                                                        <TouchableOpacity
+                                                            key={language}
+                                                            style={styles.translateDropdownItem}
+                                                            onPress={() =>
+                                                                handleSummaryTranslate(language)
+                                                            }
+                                                            disabled={isSummaryTranslating}
+                                                        >
+                                                            <Text style={styles.translateDropdownItemText}>
+                                                                {language}
+                                                            </Text>
+                                                        </TouchableOpacity>
+                                                    ))}
+                                                </ScrollView>
+                                            </View>
+                                        ) : null}
+                                    </View>
+                                </View>
+                                <TouchableOpacity
+                                    style={styles.shareButton}
+                                    onPress={handleShareSummary}
+                                    disabled={!selectedLibraryItem?.summary}
+                                >
+                                    <Ionicons name="share-outline" size={18} color="#1D71B8" />
+                                </TouchableOpacity>
+                            </View>
                             <Text style={styles.detailSectionText}>
                                 {selectedLibraryItem?.summary
-                                    ? selectedLibraryItem.summary
+                                    ? getSummaryPreview(selectedLibraryItem.summary)
                                     : "Summary not available yet."}
                             </Text>
-                        </View>
+                            {selectedLibraryItem?.summaryLanguage ? (
+                                <Text style={styles.detailSectionMeta}>
+                                    Language: {selectedLibraryItem.summaryLanguage}
+                                </Text>
+                            ) : null}
+                            {summaryError ? (
+                                <Text style={styles.detailSectionError}>{summaryError}</Text>
+                            ) : null}
+                            {selectedLibraryItem?.summary ? (
+                                <View style={styles.detailSectionOpenRow}>
+                                    <Text style={styles.detailSectionOpenText}>View Summary</Text>
+                                    <View style={styles.detailSectionOpenIcon}>
+                                        <Ionicons name="chevron-forward" size={16} color="#1D71B8" />
+                                    </View>
+                                </View>
+                            ) : null}
+                        </TouchableOpacity>
 
-                        <View style={styles.detailSection}>
+                        <TouchableOpacity
+                            style={styles.detailSection}
+                            activeOpacity={0.9}
+                            onPress={handleTranscriptOpen}
+                            disabled={!selectedLibraryItem?.transcript}
+                        >
                             <View style={styles.detailSectionHeader}>
                                 <View style={styles.detailIconBubble}>
                                     <Ionicons name="chatbubble-ellipses-outline" size={18} color="#1D71B8" />
                                 </View>
                                 <Text style={styles.detailSectionTitle}>Transcript</Text>
                             </View>
+                            <View style={styles.detailSectionActionsRow}>
+                                <View style={styles.detailSectionActionGroup}>
+                                    <TouchableOpacity
+                                        style={styles.actionButton}
+                                        onPress={handleTranscriptAction}
+                                    >
+                                        <Text style={styles.actionButtonText}>
+                                            {selectedLibraryItem?.transcript ? "Replace" : "Create"}
+                                        </Text>
+                                    </TouchableOpacity>
+                                    <View style={styles.translateDropdown}>
+                                        <TouchableOpacity
+                                            style={styles.translateDropdownToggle}
+                                            onPress={handleTranslateToggle}
+                                            disabled={!selectedLibraryItem?.transcript}
+                                        >
+                                            <Text style={styles.translateDropdownText}>Translate to</Text>
+                                            <Ionicons
+                                                name={showTranslateDropdown ? "chevron-up" : "chevron-down"}
+                                                size={14}
+                                                color="#FFFFFF"
+                                            />
+                                        </TouchableOpacity>
+                                        {showTranslateDropdown ? (
+                                            <View style={styles.translateDropdownMenu}>
+                                                <ScrollView
+                                                    style={styles.translateDropdownScroll}
+                                                    showsVerticalScrollIndicator
+                                                >
+                                                    {TRANSLATE_LANGUAGES.map((language) => (
+                                                        <TouchableOpacity
+                                                            key={language}
+                                                            style={styles.translateDropdownItem}
+                                                            onPress={() =>
+                                                                handleTranslateTranscript(language)
+                                                            }
+                                                            disabled={isTranslating}
+                                                        >
+                                                            <Text style={styles.translateDropdownItemText}>
+                                                                {language}
+                                                            </Text>
+                                                        </TouchableOpacity>
+                                                    ))}
+                                                </ScrollView>
+                                            </View>
+                                        ) : null}
+                                    </View>
+                                </View>
+                                <TouchableOpacity
+                                    style={styles.shareButton}
+                                    onPress={handleShareTranscript}
+                                    disabled={!selectedLibraryItem?.transcript}
+                                >
+                                    <Ionicons name="share-outline" size={18} color="#1D71B8" />
+                                </TouchableOpacity>
+                            </View>
                             <Text style={styles.detailSectionText}>
-                                {selectedLibraryItem?.transcript
-                                    ? selectedLibraryItem.transcript
+                                {selectedLibraryItem?.transcriptCreatedAt
+                                    ? formatTimestamp(selectedLibraryItem.transcriptCreatedAt)
                                     : "Transcript not available yet."}
                             </Text>
-                        </View>
+                            {selectedLibraryItem?.transcript ? (
+                                <Text style={styles.detailSectionPreview} numberOfLines={2}>
+                                    {selectedLibraryItem.transcript}
+                                </Text>
+                            ) : null}
+                            {selectedLibraryItem?.transcriptLanguage ? (
+                                <Text style={styles.detailSectionMeta}>
+                                    Language: {selectedLibraryItem.transcriptLanguage}
+                                </Text>
+                            ) : null}
+                            {translateError ? (
+                                <Text style={styles.detailSectionError}>{translateError}</Text>
+                            ) : null}
+                            {selectedLibraryItem?.transcript ? (
+                                <View style={styles.detailSectionOpenRow}>
+                                    <Text style={styles.detailSectionOpenText}>View transcript</Text>
+                                    <View style={styles.detailSectionOpenIcon}>
+                                        <Ionicons name="chevron-forward" size={16} color="#1D71B8" />
+                                    </View>
+                                </View>
+                            ) : null}
+                        </TouchableOpacity>
                     </View>
                 </GestureHandlerRootView>
             </Modal>
+
+            <Modal animationType="fade" transparent visible={showSummaryProgress}>
+                <View style={styles.progressOverlay}>
+                    <CreatingSummaryScreen
+                        meetingName={selectedLibraryItem?.title}
+                        onBack={handleSummaryProgressClose}
+                        title="Transcript and Summary"
+                        steps={[
+                            "Transcribing meeting",
+                            "Generating summary"
+                        ]}
+                        cancelLabel="Cancel"
+                    />
+                </View>
+            </Modal>
+
+            <Modal animationType="fade" transparent visible={showSummaryLengthModal}>
+                <View style={styles.modalOverlay}>
+                    <View style={styles.summaryLengthCard}>
+                        <Text style={styles.transcriptHeading}>Transcript and Summary</Text>
+                        <Text style={styles.summaryLengthSubtext}>
+                            Choose how detailed you want the summary.
+                        </Text>
+                        <View style={styles.summaryLengthOptions}>
+                            {["Short", "Medium", "Detailed"].map((option) => {
+                                const isActive = option === selectedSummaryLength;
+                                return (
+                                    <TouchableOpacity
+                                        key={option}
+                                        style={[
+                                            styles.summaryLengthOption,
+                                            isActive && styles.summaryLengthOptionActive
+                                        ]}
+                                        onPress={() => handleSummaryLengthSelect(option)}
+                                    >
+                                        <Text
+                                            style={[
+                                                styles.summaryLengthOptionText,
+                                                isActive && styles.summaryLengthOptionTextActive
+                                            ]}
+                                        >
+                                            {option}
+                                        </Text>
+                                    </TouchableOpacity>
+                                );
+                            })}
+                        </View>
+                        <TouchableOpacity
+                            style={styles.summaryLengthRememberRow}
+                            onPress={() => {
+                                setRememberSummaryLength((current) => {
+                                    const nextValue = !current;
+                                    if (nextValue) {
+                                        handleSummaryLengthSelect(selectedSummaryLength, {
+                                            forceRemember: true
+                                        });
+                                    }
+                                    return nextValue;
+                                });
+                            }}
+                        >
+                            <View
+                                style={[
+                                    styles.summaryLengthCheckbox,
+                                    rememberSummaryLength && styles.summaryLengthCheckboxChecked
+                                ]}
+                            >
+                                {rememberSummaryLength ? (
+                                    <Ionicons name="checkmark" size={14} color="#FFFFFF" />
+                                ) : null}
+                            </View>
+                            <Text style={styles.summaryLengthRememberText}>Remember this</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={styles.summaryLengthCancel}
+                            onPress={handleSummaryLengthCancel}
+                        >
+                            <Text style={styles.summaryLengthCancelText}>Cancel</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
+
+            <Modal animationType="fade" transparent visible={showTranscriptProgress}>
+                <View style={styles.progressOverlay}>
+                    <CreatingSummaryScreen
+                        meetingName={selectedLibraryItem?.title}
+                        onBack={handleTranscriptProgressClose}
+                        title="Transcribing"
+                        steps={["Transcribing meeting"]}
+                        cancelLabel="Cancel"
+                    />
+                </View>
+            </Modal>
+
+            <Modal animationType="fade" transparent visible={showTranscriptModal}>
+                <View style={styles.modalOverlay}>
+                    <View style={styles.transcriptCard}>
+                        <View style={styles.transcriptHeader}>
+                            <Text style={styles.transcriptTitle}>
+                                {selectedLibraryItem?.title || "Meeting"}
+                            </Text>
+                            <View style={styles.transcriptHeaderActions}>
+                                <TouchableOpacity
+                                    style={styles.detailCloseButton}
+                                    onPress={handleCopyTranscript}
+                                >
+                                    <Ionicons name="copy-outline" size={18} color="#1D71B8" />
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={styles.detailCloseButton}
+                                    onPress={handleTranscriptModalClose}
+                                >
+                                    <Ionicons name="close" size={18} color="#64748B" />
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                        <Text style={styles.transcriptHeading}>Transcript</Text>
+                        {transcriptLanguage ? (
+                            <Text style={styles.transcriptLanguage}>
+                                Language: {transcriptLanguage}
+                            </Text>
+                        ) : null}
+                        <Text style={styles.transcriptBody}>
+                            {transcriptError
+                                ? transcriptError
+                                : transcriptText || "Transcript unavailable."}
+                        </Text>
+                        {translatedLanguage ? (
+                            <Text style={styles.transcriptLanguage}>
+                                Translated to: {translatedLanguage}
+                            </Text>
+                        ) : null}
+                    </View>
+                </View>
+            </Modal>
+
+            <Modal animationType="fade" transparent visible={showSummaryModal}>
+                <View style={styles.modalOverlay}>
+                    <View style={styles.transcriptCard}>
+                        <View style={styles.transcriptHeader}>
+                            <Text style={styles.transcriptTitle}>
+                                {selectedLibraryItem?.title || "Meeting"}
+                            </Text>
+                            <View style={styles.transcriptHeaderActions}>
+                                <TouchableOpacity
+                                    style={styles.detailCloseButton}
+                                    onPress={handleCopySummary}
+                                >
+                                    <Ionicons name="copy-outline" size={18} color="#1D71B8" />
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={styles.detailCloseButton}
+                                    onPress={handleSummaryModalClose}
+                                >
+                                    <Ionicons name="close" size={18} color="#64748B" />
+                                </TouchableOpacity>
+                            </View>
+                        </View>
+                        <Text style={styles.transcriptHeading}>Summary</Text>
+                        {summaryTranslatedLanguage ? (
+                            <Text style={styles.transcriptLanguage}>
+                                Language: {summaryTranslatedLanguage}
+                            </Text>
+                        ) : null}
+                        <Text style={styles.transcriptBody}>
+                            {summaryError
+                                ? summaryError
+                                : summaryText || "Summary unavailable."}
+                        </Text>
+                    </View>
+                </View>
+            </Modal>
+
         </View>
     );
 }
@@ -915,6 +1915,133 @@ const styles = StyleSheet.create({
         justifyContent: "center",
         alignItems: "center",
         backgroundColor: "rgba(15, 23, 42, 0.12)"
+    },
+    progressOverlay: {
+        flex: 1,
+        justifyContent: "center",
+        alignItems: "center",
+        paddingHorizontal: 24,
+        backgroundColor: "rgba(15, 23, 42, 0.18)"
+    },
+    transcriptCard: {
+        width: "100%",
+        maxWidth: 420,
+        backgroundColor: "#FFFFFF",
+        borderRadius: 20,
+        padding: 20,
+        shadowColor: "#000",
+        shadowOpacity: 0.1,
+        shadowOffset: { width: 0, height: 8 },
+        shadowRadius: 16,
+        elevation: 6
+    },
+    summaryLengthCard: {
+        width: "100%",
+        maxWidth: 320,
+        backgroundColor: "#FFFFFF",
+        borderRadius: 20,
+        padding: 20,
+        shadowColor: "#000",
+        shadowOpacity: 0.1,
+        shadowOffset: { width: 0, height: 8 },
+        shadowRadius: 16,
+        elevation: 6
+    },
+    summaryLengthSubtext: {
+        fontSize: 12,
+        color: "#64748B",
+        marginBottom: 12
+    },
+    summaryLengthOptions: {
+        gap: 10,
+        marginBottom: 12
+    },
+    summaryLengthRememberRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 10,
+        marginBottom: 14
+    },
+    summaryLengthCheckbox: {
+        width: 20,
+        height: 20,
+        borderRadius: 6,
+        borderWidth: 1,
+        borderColor: "#CBD5F5",
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: "#FFFFFF"
+    },
+    summaryLengthCheckboxChecked: {
+        backgroundColor: "#1D71B8",
+        borderColor: "#1D71B8"
+    },
+    summaryLengthRememberText: {
+        fontSize: 13,
+        color: "#1E293B",
+        fontWeight: "600"
+    },
+    summaryLengthOption: {
+        paddingVertical: 10,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: "#E2E8F0",
+        alignItems: "center"
+    },
+    summaryLengthOptionActive: {
+        backgroundColor: "#1D71B8",
+        borderColor: "#1D71B8"
+    },
+    summaryLengthOptionText: {
+        fontSize: 14,
+        color: "#1E293B",
+        fontWeight: "600"
+    },
+    summaryLengthOptionTextActive: {
+        color: "#FFFFFF"
+    },
+    summaryLengthCancel: {
+        paddingVertical: 10,
+        borderRadius: 12,
+        backgroundColor: "#E2E8F0",
+        alignItems: "center"
+    },
+    summaryLengthCancelText: {
+        fontSize: 13,
+        color: "#1D71B8",
+        fontWeight: "600"
+    },
+    transcriptHeader: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        marginBottom: 10
+    },
+    transcriptHeaderActions: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 8
+    },
+    transcriptTitle: {
+        fontSize: 18,
+        fontWeight: "700",
+        color: "#1E293B"
+    },
+    transcriptHeading: {
+        fontSize: 15,
+        fontWeight: "700",
+        color: "#1E293B",
+        marginBottom: 6
+    },
+    transcriptLanguage: {
+        fontSize: 12,
+        color: "#64748B",
+        marginBottom: 8
+    },
+    transcriptBody: {
+        fontSize: 14,
+        color: "#475569",
+        lineHeight: 20
     },
     modalBackdrop: {
         ...StyleSheet.absoluteFillObject
@@ -1158,6 +2285,11 @@ const styles = StyleSheet.create({
         fontWeight: "700",
         color: "#2D3748"
     },
+    summaryHintText: {
+        marginTop: 6,
+        fontSize: 12,
+        color: "#94A3B8"
+    },
     detailCloseButton: {
         width: 32,
         height: 32,
@@ -1189,6 +2321,20 @@ const styles = StyleSheet.create({
         shadowRadius: 12,
         elevation: 4
     },
+    detailSectionActionsRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 10,
+        marginTop: 12,
+        marginBottom: 6
+    },
+    detailSectionActionGroup: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 10,
+        flex: 1
+    },
     detailSectionHeader: {
         flexDirection: "row",
         alignItems: "center",
@@ -1219,6 +2365,44 @@ const styles = StyleSheet.create({
         color: "#64748B",
         lineHeight: 20
     },
+    detailSectionMeta: {
+        marginTop: 6,
+        fontSize: 12,
+        color: "#64748B"
+    },
+    detailSectionPreview: {
+        marginTop: 8,
+        fontSize: 13,
+        color: "#475569",
+        lineHeight: 18
+    },
+    detailSectionError: {
+        marginTop: 6,
+        fontSize: 12,
+        color: "#E11D48"
+    },
+    detailSectionOpenRow: {
+        marginTop: 12,
+        paddingTop: 10,
+        borderTopWidth: 1,
+        borderTopColor: "#E2E8F0",
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between"
+    },
+    detailSectionOpenText: {
+        fontSize: 13,
+        fontWeight: "600",
+        color: "#1D71B8"
+    },
+    detailSectionOpenIcon: {
+        width: 28,
+        height: 28,
+        borderRadius: 14,
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: "#E8F1FB"
+    },
     shareButton: {
         width: 32,
         height: 32,
@@ -1226,6 +2410,68 @@ const styles = StyleSheet.create({
         alignItems: "center",
         justifyContent: "center",
         backgroundColor: "#E8F1FB"
+    },
+    sectionActions: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 8
+    },
+    actionButton: {
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 14,
+        backgroundColor: "#1D71B8"
+    },
+    actionButtonText: {
+        fontSize: 12,
+        color: "#FFFFFF",
+        fontWeight: "600"
+    },
+    translateDropdown: {
+        position: "relative"
+    },
+    translateDropdownToggle: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 6,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 14,
+        backgroundColor: "#1D71B8"
+    },
+    translateDropdownText: {
+        fontSize: 12,
+        color: "#FFFFFF",
+        fontWeight: "600"
+    },
+    translateDropdownMenu: {
+        position: "absolute",
+        top: 34,
+        left: 0,
+        minWidth: 140,
+        maxHeight: 220,
+        backgroundColor: "#FFFFFF",
+        borderRadius: 12,
+        paddingVertical: 6,
+        borderWidth: 1,
+        borderColor: "#E2E8F0",
+        shadowColor: "#000",
+        shadowOpacity: 0.08,
+        shadowOffset: { width: 0, height: 6 },
+        shadowRadius: 12,
+        elevation: 6,
+        zIndex: 20
+    },
+    translateDropdownScroll: {
+        maxHeight: 200
+    },
+    translateDropdownItem: {
+        paddingHorizontal: 12,
+        paddingVertical: 6
+    },
+    translateDropdownItemText: {
+        fontSize: 13,
+        color: "#1E293B"
     },
     recordingControls: {
         flexDirection: "row",

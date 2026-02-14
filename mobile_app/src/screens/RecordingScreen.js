@@ -4,6 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Speech from "expo-speech";
+import CreatingSummaryScreen from "./CreatingSummaryScreen";
 
 const QUALITY_PRESETS = {
     Standard: Audio.RecordingOptionsPresets.LOW_QUALITY,
@@ -23,7 +24,8 @@ export default function RecordingScreen({
     onBack,
     settings,
     onSaveRecording,
-    onTranscribeAndSummarize
+    onTranscribeAndSummarize,
+    onShowMeetingDetails
 }) {
     const recordingRef = useRef(null);
     const toastTimeoutRef = useRef(null);
@@ -39,6 +41,7 @@ export default function RecordingScreen({
     const [isProcessingChoice, setIsProcessingChoice] = useState(false);
     const [isConsentVisible, setIsConsentVisible] = useState(true);
     const [hasConsent, setHasConsent] = useState(false);
+    const [isSummaryModalVisible, setIsSummaryModalVisible] = useState(false);
 
     const recordingOptions = useMemo(() => {
         const preset = QUALITY_PRESETS[settings?.recordingQuality || "Standard"];
@@ -208,8 +211,10 @@ export default function RecordingScreen({
                     };
                     onSaveRecording?.(newRecord);
                 }
-                if (choice === "transcribe" && targetUri) {
-                    onTranscribeAndSummarize?.(targetUri);
+                if (targetUri) {
+                    onShowMeetingDetails?.(newRecord.id);
+                } else if (choice === "transcribe") {
+                    setIsSummaryModalVisible(true);
                 }
             }
         } catch (error) {
@@ -250,7 +255,7 @@ export default function RecordingScreen({
             await handleStop();
             return;
         }
-        if (isSaveModalVisible) {
+        if (isSaveModalVisible || isSummaryModalVisible) {
             return;
         }
         onBack?.();
@@ -325,6 +330,21 @@ export default function RecordingScreen({
                             <Text style={styles.modalDangerText}>Discard recording</Text>
                         </TouchableOpacity>
                     </View>
+                </View>
+            </Modal>
+            <Modal visible={isSummaryModalVisible} animationType="fade" transparent>
+                <View style={styles.modalOverlay}>
+                    <CreatingSummaryScreen
+                        meetingName={meetingName}
+                        title="Creating Summary"
+                        steps={[
+                            "Transcribing meeting",
+                            "Analyzing agenda",
+                            "Extracting action items"
+                        ]}
+                        cancelLabel="Cancel"
+                        onBack={() => setIsSummaryModalVisible(false)}
+                    />
                 </View>
             </Modal>
             <View style={styles.header}>
