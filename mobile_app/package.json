@@ -10,11 +10,16 @@
         "web": "expo start --web"
     },
     "dependencies": {
+        "@react-native-async-storage/async-storage": "^2.2.0",
         "expo": "~54.0.0",
+        "expo-av": "~16.0.8",
+        "expo-file-system": "~19.0.21",
         "expo-linear-gradient": "^15.0.8",
+        "expo-speech": "~14.0.8",
         "expo-status-bar": "~3.0.0",
         "react": "19.1.0",
-        "react-native": "0.81.5"
+        "react-native": "0.81.5",
+        "react-native-gesture-handler": "^2.30.0"
     },
     "devDependencies": {
         "@babel/core": "^7.24.0",

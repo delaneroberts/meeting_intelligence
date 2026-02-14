@@ -1,0 +1,8 @@
+const appConfig = {
+    meetingMaterials: {
+        maxItems: 10,
+        maxTotalMb: 100
+    }
+};
+
+export default appConfig;

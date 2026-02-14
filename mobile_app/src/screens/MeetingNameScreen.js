@@ -4,6 +4,7 @@ import { View, Text, TextInput, StyleSheet, TouchableOpacity } from "react-nativ
 export default function MeetingNameScreen({
     onClose,
     onStart,
+    onMeetingNameChange,
     initialValue = "",
     buttonLabel = "Start Recording"
 }) {
@@ -37,7 +38,10 @@ export default function MeetingNameScreen({
                     placeholderTextColor="#94A3B8"
                     style={styles.input}
                     value={meetingName}
-                    onChangeText={setMeetingName}
+                    onChangeText={(value) => {
+                        setMeetingName(value);
+                        onMeetingNameChange?.(value);
+                    }}
                 />
                 <TouchableOpacity
                     style={[styles.startButton, !canStart && styles.startButtonDisabled]}

@@ -1,14 +1,53 @@
-import React, { useState } from "react";
+import "react-native-gesture-handler";
+import React, { useEffect, useState } from "react";
 import { SafeAreaView, StyleSheet } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { StatusBar } from "expo-status-bar";
 import HomeScreen from "./src/screens/HomeScreen";
 import RecordingScreen from "./src/screens/RecordingScreen";
 import CreatingSummaryScreen from "./src/screens/CreatingSummaryScreen";
 import AudioFileScreen from "./src/screens/AudioFileScreen";
+import { loadLibraryItems, saveLibraryItems } from "./src/storage/libraryStorage";
 
 export default function App() {
     const [activeScreen, setActiveScreen] = useState("home");
     const [meetingName, setMeetingName] = useState("New Meeting");
+    const [showUploadModal, setShowUploadModal] = useState(false);
+    const [libraryItems, setLibraryItems] = useState([]);
+    const [settings, setSettings] = useState({
+        recordingQuality: "Standard",
+        autoTranscribe: true,
+        autoSummary: true,
+        summaryLength: "Medium",
+        meetingNameFormat: "Untitled {date} {time}",
+        backgroundRecording: false,
+        announceRecordingInProgress: true,
+        announceRecordingStopped: true,
+        wifiOnly: true,
+        maxFileSize: "200",
+        notifySummaryReady: true,
+        notifyUploadComplete: true,
+        notifyErrors: true,
+        theme: "System",
+        language: "English",
+        forceDefaultLanguage: false
+    });
+
+    const handleSettingsChange = (updates) => {
+        setSettings((current) => ({ ...current, ...updates }));
+    };
+
+    useEffect(() => {
+        const loadItems = async () => {
+            const items = await loadLibraryItems();
+            setLibraryItems(items);
+        };
+        loadItems();
+    }, []);
+
+    useEffect(() => {
+        saveLibraryItems(libraryItems);
+    }, [libraryItems]);
 
     const handleStartRecording = (name) => {
         setMeetingName(name || "New Meeting");
@@ -17,27 +56,65 @@ export default function App() {
 
     const handleUploadRecording = (name) => {
         setMeetingName(name || "New Meeting");
-        setActiveScreen("audioFile");
+        setShowUploadModal(true);
     };
 
-    const handleBackHome = () => setActiveScreen("home");
+    const handleSaveRecording = (record) => {
+        setLibraryItems((current) => [record, ...current]);
+    };
+
+    const handleDeleteRecording = (recordId) => {
+        setLibraryItems((current) => current.filter((item) => item.id !== recordId));
+    };
+
+    const handleRefreshLibrary = async () => {
+        const items = await loadLibraryItems();
+        setLibraryItems(items);
+    };
+
+    const handleTranscribeAndSummarize = () => {
+        setActiveScreen("creatingSummary");
+    };
+
+    const handleBackHome = () => {
+        setActiveScreen("home");
+        setShowUploadModal(false);
+    };
 
     return (
-        <SafeAreaView style={styles.container}>
-            <StatusBar style="dark" />
-            {activeScreen === "home" ? (
-                <HomeScreen
-                    onStartRecording={handleStartRecording}
-                    onUploadRecording={handleUploadRecording}
-                />
-            ) : activeScreen === "audioFile" ? (
-                <AudioFileScreen meetingName={meetingName} onBack={handleBackHome} />
-            ) : activeScreen === "creatingSummary" ? (
-                <CreatingSummaryScreen meetingName={meetingName} onBack={handleBackHome} />
-            ) : (
-                <RecordingScreen meetingName={meetingName} onBack={handleBackHome} />
-            )}
-        </SafeAreaView>
+        <GestureHandlerRootView style={styles.container}>
+            <SafeAreaView style={styles.container}>
+                <StatusBar style="dark" />
+                {activeScreen === "recording" ? (
+                    <RecordingScreen
+                        meetingName={meetingName}
+                        onBack={handleBackHome}
+                        settings={settings}
+                        onSaveRecording={handleSaveRecording}
+                        onTranscribeAndSummarize={handleTranscribeAndSummarize}
+                    />
+                ) : activeScreen === "creatingSummary" ? (
+                    <CreatingSummaryScreen meetingName={meetingName} onBack={handleBackHome} />
+                ) : (
+                    <>
+                        <HomeScreen
+                            onStartRecording={handleStartRecording}
+                            onUploadRecording={handleUploadRecording}
+                            libraryItems={libraryItems}
+                            onLibraryOpen={handleRefreshLibrary}
+                            onDeleteRecording={handleDeleteRecording}
+                            settings={settings}
+                            onSettingsChange={handleSettingsChange}
+                        />
+                        <AudioFileScreen
+                            meetingName={meetingName}
+                            onBack={handleBackHome}
+                            visible={showUploadModal}
+                        />
+                    </>
+                )}
+            </SafeAreaView>
+        </GestureHandlerRootView>
     );
 }
 

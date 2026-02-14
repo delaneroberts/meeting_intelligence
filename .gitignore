@@ -15,3 +15,7 @@ uploads/
 .mypy_cache/
 .vscode/
 .idea/
+
+# Node/Expo
+node_modules/
+mobile_app/node_modules/

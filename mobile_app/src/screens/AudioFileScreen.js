@@ -1,74 +1,78 @@
 import React from "react";
-import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import { Modal, Pressable, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
-export default function AudioFileScreen({ meetingName, onBack }) {
+export default function AudioFileScreen({ meetingName, onBack, visible = true }) {
     return (
-        <View style={styles.container}>
-            <View style={styles.header}>
-                <TouchableOpacity onPress={onBack} style={styles.backButton}>
-                    <Ionicons name="chevron-back" size={22} color="#2D3748" />
-                </TouchableOpacity>
-                <Text style={styles.headerTitle}>Upload Recording</Text>
-                <View style={styles.headerSpacer} />
+        <Modal animationType="slide" transparent visible={visible}>
+            <View style={styles.overlay}>
+                <Pressable style={styles.backdrop} onPress={onBack} />
+                <View style={styles.modalCard}>
+                    <View style={styles.modalHeader}>
+                        <Text style={styles.headerTitle}>Upload Recording</Text>
+                        <TouchableOpacity onPress={onBack} style={styles.closeButton}>
+                            <Ionicons name="close" size={20} color="#2D3748" />
+                        </TouchableOpacity>
+                    </View>
+                    <View style={styles.cardContent}>
+                        <Ionicons name="cloud-upload" size={36} color="#1D71B8" />
+                        <Text style={styles.title}>Select an audio file</Text>
+                        <Text style={styles.subtitle}>
+                            Upload a recording for {meetingName || "your meeting"}.
+                        </Text>
+                        <Text style={styles.allowedFiles}>
+                            Allowed files: MP3, WAV, M4A.
+                        </Text>
+                    </View>
+                </View>
             </View>
-
-            <View style={styles.card}>
-                <Ionicons name="cloud-upload" size={36} color="#1D71B8" />
-                <Text style={styles.title}>Select an audio file</Text>
-                <Text style={styles.subtitle}>
-                    Upload a recording for {meetingName || "your meeting"}.
-                </Text>
-            </View>
-        </View>
+        </Modal>
     );
 }
 
 const styles = StyleSheet.create({
-    container: {
+    overlay: {
         flex: 1,
-        backgroundColor: "#F4F6FA",
-        paddingHorizontal: 24,
-        paddingTop: 56
+        justifyContent: "center",
+        paddingHorizontal: 20,
+        backgroundColor: "rgba(15, 23, 42, 0.45)"
     },
-    header: {
+    backdrop: {
+        ...StyleSheet.absoluteFillObject
+    },
+    modalCard: {
+        backgroundColor: "#FFFFFF",
+        borderRadius: 24,
+        paddingHorizontal: 24,
+        paddingVertical: 20,
+        shadowColor: "#0F172A",
+        shadowOpacity: 0.18,
+        shadowOffset: { width: 0, height: 10 },
+        shadowRadius: 20,
+        elevation: 12
+    },
+    modalHeader: {
         flexDirection: "row",
         alignItems: "center",
         justifyContent: "space-between",
-        marginBottom: 32
-    },
-    backButton: {
-        width: 36,
-        height: 36,
-        borderRadius: 18,
-        alignItems: "center",
-        justifyContent: "center",
-        backgroundColor: "#FFFFFF",
-        shadowColor: "#000",
-        shadowOpacity: 0.06,
-        shadowOffset: { width: 0, height: 4 },
-        shadowRadius: 10,
-        elevation: 4
+        marginBottom: 20
     },
     headerTitle: {
         fontSize: 18,
         fontWeight: "700",
         color: "#2D3748"
     },
-    headerSpacer: {
-        width: 36
-    },
-    card: {
-        backgroundColor: "#FFFFFF",
-        borderRadius: 20,
-        paddingVertical: 32,
-        paddingHorizontal: 24,
+    closeButton: {
+        width: 32,
+        height: 32,
+        borderRadius: 16,
         alignItems: "center",
-        shadowColor: "#000",
-        shadowOpacity: 0.08,
-        shadowOffset: { width: 0, height: 8 },
-        shadowRadius: 14,
-        elevation: 6
+        justifyContent: "center",
+        backgroundColor: "#F1F5F9"
+    },
+    cardContent: {
+        alignItems: "center",
+        paddingBottom: 8
     },
     title: {
         marginTop: 16,
@@ -80,6 +84,12 @@ const styles = StyleSheet.create({
         marginTop: 8,
         fontSize: 14,
         color: "#64748B",
+        textAlign: "center"
+    },
+    allowedFiles: {
+        marginTop: 12,
+        fontSize: 13,
+        color: "#475569",
         textAlign: "center"
     }
 });
