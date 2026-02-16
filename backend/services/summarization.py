@@ -102,7 +102,8 @@ def _render_memo_to_text(data: dict) -> str:
 def summarize_and_extract_actions(
     transcript: str,
     agenda: str = "",
-    detected_language: str = "English"
+    detected_language: str = "English",
+    user_id: int = 1
 ) -> tuple[str, list[str], dict]:
     """
     Summarize a meeting transcript and extract action items.
@@ -126,12 +127,31 @@ def summarize_and_extract_actions(
         - action_items_list: List of action items as strings
         - memo_json_dict: Structured meeting data (may be empty on fallback)
     """
+
     logger.info(
-        "Summarizing transcript (%d chars), agenda present: %s, language: %s",
+        "Summarizing transcript (%d chars), agenda present: %s, language: %s, user_id: %s",
         len(transcript or ""),
         bool(agenda.strip()),
-        detected_language
+        detected_language,
+        user_id
     )
+
+    # --- Premium quota check and decrement ---
+    try:
+        from backend.models import User, db
+        user = User.query.get(user_id)
+        if not user:
+            raise Exception(f"User {user_id} not found.")
+        if user.is_premium:
+            if user.premium_quota <= 0:
+                raise Exception("Premium quota exhausted. Please purchase more premium credits.")
+            # Decrement quota
+            user.premium_quota -= 1
+            db.session.commit()
+            logger.info(f"Decremented premium quota for user {user_id}. Remaining: {user.premium_quota}")
+    except Exception as e:
+        logger.error(f"Premium quota check failed: {e}")
+        raise
 
     agenda_instruction = ""
     if agenda.strip():

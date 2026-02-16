@@ -139,7 +139,9 @@ export default function HomeScreen({
     settings,
     onSettingsChange,
     openDetailRecordId,
-    onDetailOpened
+    onDetailOpened,
+    openLibraryRequestId,
+    uploadSuccessRecordId
 }) {
     const [showMeetingName, setShowMeetingName] = useState(false);
     const [showAgendaUpload, setShowAgendaUpload] = useState(false);
@@ -153,6 +155,7 @@ export default function HomeScreen({
     const [materialsUploadCount] = useState(0);
     const [selectedLibraryItem, setSelectedLibraryItem] = useState(null);
     const [showLibraryDetail, setShowLibraryDetail] = useState(false);
+    const [showUploadToast, setShowUploadToast] = useState(false);
     const [showSummaryProgress, setShowSummaryProgress] = useState(false);
     const [showSummaryLengthModal, setShowSummaryLengthModal] = useState(false);
     const [selectedSummaryLength, setSelectedSummaryLength] = useState("Medium");
@@ -231,6 +234,39 @@ export default function HomeScreen({
         onDetailOpened?.();
     }, [openDetailRecordId, libraryItems, onDetailOpened]);
 
+    useEffect(() => {
+        if (!openLibraryRequestId) {
+            return;
+        }
+        onLibraryOpen?.();
+        setShowLibraryModal(true);
+        setShowLibraryDetail(false);
+        setShowSettingsModal(false);
+    }, [openLibraryRequestId, onLibraryOpen]);
+
+    useEffect(() => {
+        if (!uploadSuccessRecordId || !selectedLibraryItem) {
+            return;
+        }
+        if (selectedLibraryItem.id === uploadSuccessRecordId) {
+            setShowUploadToast(true);
+        }
+    }, [uploadSuccessRecordId, selectedLibraryItem]);
+
+    useEffect(() => {
+        if (!showUploadToast) {
+            return;
+        }
+        if (!selectedLibraryItem || selectedLibraryItem.id !== uploadSuccessRecordId) {
+            setShowUploadToast(false);
+            return;
+        }
+        if (selectedLibraryItem.summary || selectedLibraryItem.transcript) {
+            setShowUploadToast(false);
+        }
+    }, [showUploadToast, selectedLibraryItem, uploadSuccessRecordId]);
+
+
     const formattedTimestamp = useMemo(() => {
         const now = new Date();
         const pad = (value) => value.toString().padStart(2, "0");
@@ -238,6 +274,7 @@ export default function HomeScreen({
         const time = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
         return `Untitled ${date} ${time}`;
     }, []);
+
 
     const handleClose = () => setShowMeetingName(false);
     const handleStart = (meetingName) => {
@@ -247,9 +284,7 @@ export default function HomeScreen({
         }
         setMeetingId(trimmedName);
         setShowMeetingName(false);
-        if (pendingAction === "upload") {
-            onUploadRecording?.(trimmedName);
-        } else if (pendingAction === "agenda") {
+        if (pendingAction === "agenda") {
             setShowAgendaUpload(true);
         } else {
             onStartRecording?.(trimmedName);
@@ -259,12 +294,14 @@ export default function HomeScreen({
 
     const handleActionPress = (action) => {
         const trimmedName = meetingId.trim();
+        if (action === "upload") {
+            onUploadRecording?.(trimmedName);
+            return;
+        }
         if (!trimmedName) {
             setPendingAction(action);
             setModalDefaultName(formattedTimestamp);
-            if (action === "upload") {
-                setModalButtonLabel("Upload Recording");
-            } else if (action === "agenda") {
+            if (action === "agenda") {
                 setModalButtonLabel("Add Agenda");
             } else {
                 setModalButtonLabel("Start Recording");
@@ -272,13 +309,11 @@ export default function HomeScreen({
             setShowMeetingName(true);
             return;
         }
-        if (action === "upload") {
-            onUploadRecording?.(trimmedName);
-        } else if (action === "agenda") {
+        if (action === "agenda") {
             setShowAgendaUpload(true);
         } else {
             onStartRecording?.(trimmedName);
-        };
+        }
     };
 
     const handleAgendaClose = () => setShowAgendaUpload(false);
@@ -318,6 +353,24 @@ export default function HomeScreen({
         setShowTranslateDropdown(false);
         setShowSummaryTranslateDropdown(false);
         setShowLibraryModal(true);
+    };
+
+    const handleDetailHomePress = () => {
+        setShowLibraryDetail(false);
+        setShowLibraryModal(false);
+        setShowSettingsModal(false);
+    };
+
+    const handleDetailLibraryPress = () => {
+        setShowLibraryDetail(false);
+        setShowLibraryModal(true);
+        setShowSettingsModal(false);
+    };
+
+    const handleDetailSettingsPress = () => {
+        setShowLibraryDetail(false);
+        setShowLibraryModal(false);
+        setShowSettingsModal(true);
     };
 
     const handleSummaryAction = () => {
@@ -942,318 +995,155 @@ export default function HomeScreen({
 
     return (
         <View style={styles.container}>
-            <View style={styles.content}>
-                <View style={styles.brandBlock}>
-                    <View style={styles.logoContainer}>
-                        <Image
-                            source={require("../../assets/alta-vista-logo.png")}
-                            style={styles.logoImage}
-                            resizeMode="cover"
-                        />
-                    </View>
-                    <Text style={styles.brandTitle}>Alta Vista</Text>
-                    <Text style={styles.brandSubtitle}>Meeting Intelligence</Text>
-                </View>
-
-                <Text style={styles.prompt}>What would you like to do?</Text>
-
-                <View style={styles.buttonStack}>
-                    <TouchableOpacity
-                        activeOpacity={0.9}
-                        onPress={() => handleActionPress("record")}
-                    >
-                        <LinearGradient
-                            colors={["#FF9A3D", "#F48B1F"]}
-                            start={{ x: 0, y: 0 }}
-                            end={{ x: 1, y: 1 }}
-                            style={styles.primaryButton}
-                        >
-                            <Ionicons name="mic" size={22} color="#FFFFFF" />
-                            <Text style={styles.primaryButtonText}>Record Meeting</Text>
-                        </LinearGradient>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                        activeOpacity={0.9}
-                        onPress={() => handleActionPress("upload")}
-                    >
-                        <LinearGradient
-                            colors={["#6BB6E5", "#4E8ECF"]}
-                            start={{ x: 0, y: 0 }}
-                            end={{ x: 1, y: 1 }}
-                            style={styles.secondaryButton}
-                        >
-                            <Ionicons name="cloud-upload" size={22} color="#FFFFFF" />
-                            <Text style={styles.secondaryButtonText}>Upload Recording</Text>
-                        </LinearGradient>
-                    </TouchableOpacity>
-                </View>
-
-                <TouchableOpacity
-                    style={styles.agendaCard}
-                    activeOpacity={0.9}
-                    onPress={() => handleActionPress("agenda")}
-                >
-                    <View style={styles.agendaLeft}>
-                        <View style={styles.agendaIcon}>
-                            <Ionicons name="document-text-outline" size={20} color="#6BA3D3" />
+            {!showLibraryDetail && (
+                <>
+                    <View style={styles.content}>
+                        <View style={styles.brandBlock}>
+                            <View style={styles.logoContainer}>
+                                <Image
+                                    source={require("../../assets/alta-vista-logo.png")}
+                                    style={styles.logoImage}
+                                    resizeMode="cover"
+                                />
+                            </View>
+                            <Text style={styles.brandTitle}>Alta Vista</Text>
+                            <Text style={styles.brandSubtitle}>Meeting Intelligence</Text>
                         </View>
-                        <Text style={styles.agendaText}>Add Agenda</Text>
-                    </View>
-                    <Ionicons name="chevron-forward" size={18} color="#A0AEC0" />
-                </TouchableOpacity>
 
-                <TouchableOpacity
-                    style={styles.agendaCard}
-                    activeOpacity={0.9}
-                    onPress={() => setShowMaterialsUpload(true)}
-                >
-                    <View style={styles.agendaLeft}>
-                        <View style={styles.agendaIconAlt}>
-                            <Ionicons name="folder-open" size={20} color="#6BA3D3" />
+                        <Text style={styles.prompt}>What would you like to do?</Text>
+
+                        <View style={styles.buttonStack}>
+                            <TouchableOpacity
+                                activeOpacity={0.9}
+                                onPress={() => handleActionPress("record")}
+                            >
+                                <LinearGradient
+                                    colors={["#FF9A3D", "#F48B1F"]}
+                                    start={{ x: 0, y: 0 }}
+                                    end={{ x: 1, y: 1 }}
+                                    style={styles.primaryButton}
+                                >
+                                    <Ionicons name="mic" size={22} color="#FFFFFF" />
+                                    <Text style={styles.primaryButtonText}>Record Meeting</Text>
+                                </LinearGradient>
+                            </TouchableOpacity>
+
+                            <TouchableOpacity
+                                activeOpacity={0.9}
+                                onPress={() => handleActionPress("upload")}
+                            >
+                                <LinearGradient
+                                    colors={["#6BB6E5", "#4E8ECF"]}
+                                    start={{ x: 0, y: 0 }}
+                                    end={{ x: 1, y: 1 }}
+                                    style={styles.secondaryButton}
+                                >
+                                    <Ionicons name="cloud-upload" size={22} color="#FFFFFF" />
+                                    <Text style={styles.secondaryButtonText}>Upload Recording</Text>
+                                </LinearGradient>
+                            </TouchableOpacity>
                         </View>
-                        <Text style={styles.agendaText}>Add Meeting Materials</Text>
+
+                        <TouchableOpacity
+                            style={styles.agendaCard}
+                            activeOpacity={0.9}
+                            onPress={() => handleActionPress("agenda")}
+                        >
+                            <View style={styles.agendaLeft}>
+                                <View style={styles.agendaIcon}>
+                                    <Ionicons name="document-text-outline" size={20} color="#6BA3D3" />
+                                </View>
+                                <Text style={styles.agendaText}>Add Agenda</Text>
+                            </View>
+                            <Ionicons name="chevron-forward" size={18} color="#A0AEC0" />
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={styles.agendaCard}
+                            activeOpacity={0.9}
+                            onPress={() => setShowMaterialsUpload(true)}
+                        >
+                            <View style={styles.agendaLeft}>
+                                <View style={styles.agendaIconAlt}>
+                                    <Ionicons name="folder-open" size={20} color="#6BA3D3" />
+                                </View>
+                                <Text style={styles.agendaText}>Add Meeting Materials</Text>
+                            </View>
+                            <Ionicons name="chevron-forward" size={18} color="#A0AEC0" />
+                        </TouchableOpacity>
+
+                        <View style={styles.meetingNameCard}>
+                            <Text style={styles.meetingNameLabel}>Meeting ID</Text>
+                            <TextInput
+                                value={meetingId}
+                                onChangeText={setMeetingId}
+                                placeholder="Untitled"
+                                placeholderTextColor="#A0AEC0"
+                                style={styles.meetingNameInput}
+                            />
+                        </View>
                     </View>
-                    <Ionicons name="chevron-forward" size={18} color="#A0AEC0" />
-                </TouchableOpacity>
 
-                <View style={styles.meetingNameCard}>
-                    <Text style={styles.meetingNameLabel}>Meeting ID</Text>
-                    <TextInput
-                        value={meetingId}
-                        onChangeText={setMeetingId}
-                        placeholder="Untitled"
-                        placeholderTextColor="#A0AEC0"
-                        style={styles.meetingNameInput}
-                    />
-                </View>
-            </View>
-
-            <View style={styles.tabBar}>
-                <TouchableOpacity
-                    style={styles.tabItem}
-                    activeOpacity={0.8}
-                    onPress={handleHomePress}
-                >
-                    <Ionicons
-                        name="home"
-                        size={22}
-                        color={showLibraryModal || showSettingsModal ? "#94A3B8" : "#1D71B8"}
-                    />
-                    <Text
-                        style={
-                            showLibraryModal || showSettingsModal
-                                ? styles.tabLabel
-                                : styles.tabLabelActive
-                        }
-                    >
-                        Home
-                    </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                    style={styles.tabItem}
-                    activeOpacity={0.8}
-                    onPress={handleLibraryOpen}
-                >
-                    <Ionicons
-                        name="albums"
-                        size={22}
-                        color={showLibraryModal ? "#1D71B8" : "#94A3B8"}
-                    />
-                    <Text style={showLibraryModal ? styles.tabLabelActive : styles.tabLabel}>
-                        Library
-                    </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                    style={styles.tabItem}
-                    activeOpacity={0.8}
-                    onPress={handleSettingsOpen}
-                >
-                    <Ionicons
-                        name="settings"
-                        size={22}
-                        color={showSettingsModal ? "#1D71B8" : "#94A3B8"}
-                    />
-                    <Text style={showSettingsModal ? styles.tabLabelActive : styles.tabLabel}>
-                        Settings
-                    </Text>
-                </TouchableOpacity>
-            </View>
-
-            {showMeetingName && (
-                <View style={styles.modalOverlay}>
-                    <MeetingNameScreen
-                        onClose={handleClose}
-                        onStart={handleStart}
-                        onMeetingNameChange={setMeetingId}
-                        initialValue={modalDefaultName}
-                        buttonLabel={modalButtonLabel}
-                    />
-                </View>
+                    <View style={styles.tabBar}>
+                        <TouchableOpacity
+                            style={styles.tabItem}
+                            activeOpacity={0.8}
+                            onPress={handleHomePress}
+                        >
+                            <Ionicons
+                                name="home"
+                                size={22}
+                                color={showLibraryModal || showSettingsModal ? "#94A3B8" : "#1D71B8"}
+                            />
+                            <Text
+                                style={
+                                    showLibraryModal || showSettingsModal
+                                        ? styles.tabLabel
+                                        : styles.tabLabelActive
+                                }
+                            >
+                                Home
+                            </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={styles.tabItem}
+                            activeOpacity={0.8}
+                            onPress={handleLibraryOpen}
+                        >
+                            <Ionicons
+                                name="albums"
+                                size={22}
+                                color={showLibraryModal ? "#1D71B8" : "#94A3B8"}
+                            />
+                            <Text style={showLibraryModal ? styles.tabLabelActive : styles.tabLabel}>
+                                Library
+                            </Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={styles.tabItem}
+                            activeOpacity={0.8}
+                            onPress={handleSettingsOpen}
+                        >
+                            <Ionicons
+                                name="settings"
+                                size={22}
+                                color={showSettingsModal ? "#1D71B8" : "#94A3B8"}
+                            />
+                            <Text style={showSettingsModal ? styles.tabLabelActive : styles.tabLabel}>
+                                Settings
+                            </Text>
+                        </TouchableOpacity>
+                    </View>
+                </>
             )}
 
-            <Modal animationType="fade" transparent visible={showAgendaUpload}>
-                <View style={styles.modalOverlay}>
-                    <Pressable style={styles.modalBackdrop} onPress={handleAgendaClose} />
-                    <View style={styles.agendaModal}>
-                        <View style={styles.agendaModalHeader}>
-                            <Text style={styles.agendaModalTitle}>Add Agenda</Text>
-                            <TouchableOpacity
-                                onPress={handleAgendaClose}
-                                style={styles.agendaCloseButton}
-                            >
-                                <Ionicons name="close" size={18} color="#64748B" />
-                            </TouchableOpacity>
-                        </View>
-                        <Ionicons name="document-text-outline" size={34} color="#1D71B8" />
-                        <Text style={styles.agendaModalText}>
-                            Upload, or snap a picture of an agenda
-                        </Text>
-                        <Text style={styles.agendaModalSubtext}>
-                            Allowed files: PDF, DOCX, TXT.
-                        </Text>
-                        <TouchableOpacity style={styles.agendaUploadButton} activeOpacity={0.85}>
-                            <Text style={styles.agendaUploadText}>Choose File</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.agendaCameraButton} activeOpacity={0.85}>
-                            <Ionicons name="camera" size={16} color="#1D71B8" />
-                            <Text style={styles.agendaCameraText}>Take a Picture</Text>
-                        </TouchableOpacity>
-                    </View>
-                </View>
-            </Modal>
-
-            <Modal animationType="fade" transparent visible={showMaterialsUpload}>
-                <View style={styles.modalOverlay}>
-                    <Pressable style={styles.modalBackdrop} onPress={handleMaterialsClose} />
-                    <View style={styles.materialsModal}>
-                        <View style={styles.agendaModalHeader}>
-                            <Text style={styles.agendaModalTitle}>Add Meeting Materials</Text>
-                            <TouchableOpacity
-                                onPress={handleMaterialsClose}
-                                style={styles.agendaCloseButton}
-                            >
-                                <Ionicons name="close" size={18} color="#64748B" />
-                            </TouchableOpacity>
-                        </View>
-                        <Ionicons name="folder-open" size={34} color="#1D71B8" />
-                        <Text style={styles.materialsModalText}>
-                            Upload/Snap a Picture of relevant meeting materials.
-                        </Text>
-                        <Text style={styles.materialsModalSubtext}>
-                            Max of {materialsLimits.maxItems} items, and {materialsLimits.maxTotalMb} MB
-                            of data allowed.
-                        </Text>
-                        <Text style={styles.materialsUploadedText}>
-                            {materialsUploadCount} Items Uploaded
-                        </Text>
-                        <TouchableOpacity style={styles.agendaUploadButton} activeOpacity={0.85}>
-                            <Text style={styles.agendaUploadText}>Choose File</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.agendaCameraButton} activeOpacity={0.85}>
-                            <Ionicons name="camera" size={16} color="#1D71B8" />
-                            <Text style={styles.agendaCameraText}>Take a Picture</Text>
-                        </TouchableOpacity>
-                    </View>
-                </View>
-            </Modal>
-
-            <Modal animationType="slide" transparent visible={showLibraryModal}>
+            {showLibraryDetail && (
                 <GestureHandlerRootView style={styles.libraryOverlay}>
-                    <View style={styles.libraryContainer}>
-                        <View style={styles.libraryHeader}>
-                            <Text style={styles.libraryTitle}>Meetings</Text>
-                            <TouchableOpacity style={styles.searchButton} activeOpacity={0.85}>
-                                <Ionicons name="search" size={20} color="#64748B" />
-                            </TouchableOpacity>
-                        </View>
-                        <View style={styles.meetingList}>
-                            {meetingList.length ? (
-                                meetingList.map((item) => {
-                                    const swipeableRef = getSwipeableRef(item.id);
-                                    return (
-                                        <Swipeable
-                                            key={item.id}
-                                            ref={swipeableRef}
-                                            renderRightActions={() => renderDeleteAction(item.id)}
-                                            overshootRight={false}
-                                        >
-                                            <TapGestureHandler
-                                                onHandlerStateChange={({ nativeEvent }) => {
-                                                    if (nativeEvent.state === State.END) {
-                                                        handleLibraryItemPress(item);
-                                                    }
-                                                }}
-                                            >
-                                                <View style={styles.meetingCard}>
-                                                    <View>
-                                                        <Text style={styles.meetingTitle}>
-                                                            {item.title}
-                                                        </Text>
-                                                        <Text style={styles.meetingMeta}>
-                                                            {item.date} · {item.time} · {item.statusLabel}
-                                                        </Text>
-                                                    </View>
-                                                    <Ionicons
-                                                        name="chevron-forward"
-                                                        size={18}
-                                                        color="#94A3B8"
-                                                    />
-                                                </View>
-                                            </TapGestureHandler>
-                                        </Swipeable>
-                                    );
-                                })
-                            ) : (
-                                <View style={styles.emptyLibrary}>
-                                    <Text style={styles.emptyLibraryTitle}>No recordings yet</Text>
-                                    <Text style={styles.emptyLibraryText}>
-                                        Record a meeting to see transcripts, summaries, and audio here.
-                                    </Text>
-                                </View>
-                            )}
-                        </View>
-                        <View style={styles.libraryTabBar}>
-                            <TouchableOpacity
-                                style={styles.tabItem}
-                                activeOpacity={0.8}
-                                onPress={handleHomePress}
-                            >
-                                <Ionicons name="home" size={22} color="#94A3B8" />
-                                <Text style={styles.tabLabel}>Home</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity style={styles.tabItem} activeOpacity={0.8}>
-                                <Ionicons name="albums" size={22} color="#1D71B8" />
-                                <Text style={styles.tabLabelActive}>Library</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity
-                                style={styles.tabItem}
-                                activeOpacity={0.8}
-                                onPress={handleSettingsOpen}
-                            >
-                                <Ionicons name="settings" size={22} color="#94A3B8" />
-                                <Text style={styles.tabLabel}>Settings</Text>
-                            </TouchableOpacity>
-                        </View>
-                    </View>
-                </GestureHandlerRootView>
-            </Modal>
-
-            <Modal animationType="slide" transparent visible={showSettingsModal}>
-                <View style={styles.libraryOverlay}>
-                    <SettingsScreen
-                        onClose={handleSettingsClose}
-                        onShowHome={handleHomePress}
-                        onShowLibrary={handleLibraryOpen}
-                        settings={settings}
-                        onSettingsChange={onSettingsChange}
-                    />
-                </View>
-            </Modal>
-
-            <Modal animationType="slide" transparent visible={showLibraryDetail}>
-                <GestureHandlerRootView style={styles.libraryOverlay}>
-                    <View style={styles.detailContainer}>
+                    <ScrollView
+                        style={styles.detailScroll}
+                        contentContainerStyle={styles.detailContainer}
+                        showsVerticalScrollIndicator={false}
+                    >
                         <View style={styles.detailHeader}>
                             <Text style={styles.detailTitle}>Meeting Details</Text>
                             <TouchableOpacity
@@ -1266,6 +1156,13 @@ export default function HomeScreen({
                         <Text style={styles.detailMeetingName}>
                             {selectedLibraryItem?.title || "Untitled"}
                         </Text>
+                        {showUploadToast ? (
+                            <View style={styles.uploadToast}>
+                                <Text style={styles.uploadToastText}>
+                                    Download complete. You may now generate a transcript and/or summary.
+                                </Text>
+                            </View>
+                        ) : null}
 
                         <View style={styles.detailSection}>
                             <View style={styles.detailSectionHeaderRow}>
@@ -1544,9 +1441,211 @@ export default function HomeScreen({
                                 </View>
                             ) : null}
                         </TouchableOpacity>
+                    </ScrollView>
+                    <View style={styles.libraryTabBar}>
+                        <TouchableOpacity
+                            style={styles.tabItem}
+                            activeOpacity={0.8}
+                            onPress={handleDetailHomePress}
+                        >
+                            <Ionicons name="home" size={22} color="#94A3B8" />
+                            <Text style={styles.tabLabel}>Home</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={styles.tabItem}
+                            activeOpacity={0.8}
+                            onPress={handleDetailLibraryPress}
+                        >
+                            <Ionicons name="albums" size={22} color="#1D71B8" />
+                            <Text style={styles.tabLabelActive}>Library</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={styles.tabItem}
+                            activeOpacity={0.8}
+                            onPress={handleDetailSettingsPress}
+                        >
+                            <Ionicons name="settings" size={22} color="#94A3B8" />
+                            <Text style={styles.tabLabel}>Settings</Text>
+                        </TouchableOpacity>
+                    </View>
+                </GestureHandlerRootView>
+            )}
+
+            {showMeetingName && (
+                <View style={styles.modalOverlay}>
+                    <MeetingNameScreen
+                        onClose={handleClose}
+                        onStart={handleStart}
+                        onMeetingNameChange={setMeetingId}
+                        initialValue={modalDefaultName}
+                        buttonLabel={modalButtonLabel}
+                    />
+                </View>
+            )}
+
+            <Modal animationType="fade" transparent visible={showAgendaUpload}>
+                <View style={styles.modalOverlay}>
+                    <Pressable style={styles.modalBackdrop} onPress={handleAgendaClose} />
+                    <View style={styles.agendaModal}>
+                        <View style={styles.agendaModalHeader}>
+                            <Text style={styles.agendaModalTitle}>Add Agenda</Text>
+                            <TouchableOpacity
+                                onPress={handleAgendaClose}
+                                style={styles.agendaCloseButton}
+                            >
+                                <Ionicons name="close" size={18} color="#64748B" />
+                            </TouchableOpacity>
+                        </View>
+                        <Ionicons name="document-text-outline" size={34} color="#1D71B8" />
+                        <Text style={styles.agendaModalText}>
+                            Upload, or snap a picture of an agenda
+                        </Text>
+                        <Text style={styles.agendaModalSubtext}>
+                            Allowed files: PDF, DOCX, TXT.
+                        </Text>
+                        <TouchableOpacity style={styles.agendaUploadButton} activeOpacity={0.85}>
+                            <Text style={styles.agendaUploadText}>Choose File</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.agendaCameraButton} activeOpacity={0.85}>
+                            <Ionicons name="camera" size={16} color="#1D71B8" />
+                            <Text style={styles.agendaCameraText}>Take a Picture</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
+
+            <Modal animationType="fade" transparent visible={showMaterialsUpload}>
+                <View style={styles.modalOverlay}>
+                    <Pressable style={styles.modalBackdrop} onPress={handleMaterialsClose} />
+                    <View style={styles.materialsModal}>
+                        <View style={styles.agendaModalHeader}>
+                            <Text style={styles.agendaModalTitle}>Add Meeting Materials</Text>
+                            <TouchableOpacity
+                                onPress={handleMaterialsClose}
+                                style={styles.agendaCloseButton}
+                            >
+                                <Ionicons name="close" size={18} color="#64748B" />
+                            </TouchableOpacity>
+                        </View>
+                        <Ionicons name="folder-open" size={34} color="#1D71B8" />
+                        <Text style={styles.materialsModalText}>
+                            Upload/Snap a Picture of relevant meeting materials.
+                        </Text>
+                        <Text style={styles.materialsModalSubtext}>
+                            Max of {materialsLimits.maxItems} items, and {materialsLimits.maxTotalMb} MB
+                            of data allowed.
+                        </Text>
+                        <Text style={styles.materialsUploadedText}>
+                            {materialsUploadCount} Items Uploaded
+                        </Text>
+                        <TouchableOpacity style={styles.agendaUploadButton} activeOpacity={0.85}>
+                            <Text style={styles.agendaUploadText}>Choose File</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={styles.agendaCameraButton} activeOpacity={0.85}>
+                            <Ionicons name="camera" size={16} color="#1D71B8" />
+                            <Text style={styles.agendaCameraText}>Take a Picture</Text>
+                        </TouchableOpacity>
+                    </View>
+                </View>
+            </Modal>
+
+            <Modal animationType="slide" transparent visible={showLibraryModal}>
+                <GestureHandlerRootView style={styles.libraryOverlay}>
+                    <View style={styles.libraryContainer}>
+                        <View style={styles.libraryHeader}>
+                            <Text style={styles.libraryTitle}>Library</Text>
+                            <TouchableOpacity style={styles.searchButton} activeOpacity={0.85}>
+                                <Ionicons name="search" size={20} color="#64748B" />
+                            </TouchableOpacity>
+                        </View>
+                        <ScrollView
+                            style={styles.meetingListScroll}
+                            contentContainerStyle={styles.meetingList}
+                            showsVerticalScrollIndicator={false}
+                        >
+                            {meetingList.length ? (
+                                meetingList.map((item) => {
+                                    const swipeableRef = getSwipeableRef(item.id);
+                                    return (
+                                        <Swipeable
+                                            key={item.id}
+                                            ref={swipeableRef}
+                                            renderRightActions={() => renderDeleteAction(item.id)}
+                                            overshootRight={false}
+                                        >
+                                            <TapGestureHandler
+                                                onHandlerStateChange={({ nativeEvent }) => {
+                                                    if (nativeEvent.state === State.END) {
+                                                        handleLibraryItemPress(item);
+                                                    }
+                                                }}
+                                            >
+                                                <View style={styles.meetingCard}>
+                                                    <View>
+                                                        <Text style={styles.meetingTitle}>
+                                                            {item.title}
+                                                        </Text>
+                                                        <Text style={styles.meetingMeta}>
+                                                            {item.date} · {item.time} · {item.statusLabel}
+                                                        </Text>
+                                                    </View>
+                                                    <Ionicons
+                                                        name="chevron-forward"
+                                                        size={18}
+                                                        color="#94A3B8"
+                                                    />
+                                                </View>
+                                            </TapGestureHandler>
+                                        </Swipeable>
+                                    );
+                                })
+                            ) : (
+                                <View style={styles.emptyLibrary}>
+                                    <Text style={styles.emptyLibraryTitle}>No recordings yet</Text>
+                                    <Text style={styles.emptyLibraryText}>
+                                        Record a meeting to see transcripts, summaries, and audio here.
+                                    </Text>
+                                </View>
+                            )}
+                        </ScrollView>
+                        <View style={styles.libraryTabBar}>
+                            <TouchableOpacity
+                                style={styles.tabItem}
+                                activeOpacity={0.8}
+                                onPress={handleHomePress}
+                            >
+                                <Ionicons name="home" size={22} color="#94A3B8" />
+                                <Text style={styles.tabLabel}>Home</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity style={styles.tabItem} activeOpacity={0.8}>
+                                <Ionicons name="albums" size={22} color="#1D71B8" />
+                                <Text style={styles.tabLabelActive}>Library</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={styles.tabItem}
+                                activeOpacity={0.8}
+                                onPress={handleSettingsOpen}
+                            >
+                                <Ionicons name="settings" size={22} color="#94A3B8" />
+                                <Text style={styles.tabLabel}>Settings</Text>
+                            </TouchableOpacity>
+                        </View>
                     </View>
                 </GestureHandlerRootView>
             </Modal>
+
+            <Modal animationType="slide" transparent visible={showSettingsModal}>
+                <View style={styles.libraryOverlay}>
+                    <SettingsScreen
+                        onClose={handleSettingsClose}
+                        onShowHome={handleHomePress}
+                        onShowLibrary={handleLibraryOpen}
+                        settings={settings}
+                        onSettingsChange={onSettingsChange}
+                    />
+                </View>
+            </Modal>
+
 
             <Modal animationType="fade" transparent visible={showSummaryProgress}>
                 <View style={styles.progressOverlay}>
@@ -2187,6 +2286,9 @@ const styles = StyleSheet.create({
     meetingList: {
         gap: 12
     },
+    meetingListScroll: {
+        flex: 1
+    },
     meetingCard: {
         backgroundColor: "#FFFFFF",
         borderRadius: 18,
@@ -2268,11 +2370,14 @@ const styles = StyleSheet.create({
         shadowRadius: 10,
         elevation: 12
     },
+    detailScroll: {
+        flex: 1
+    },
     detailContainer: {
-        flex: 1,
+        flexGrow: 1,
         paddingHorizontal: 24,
         paddingTop: 56,
-        paddingBottom: 40
+        paddingBottom: 160
     },
     detailHeader: {
         flexDirection: "row",
@@ -2308,6 +2413,20 @@ const styles = StyleSheet.create({
         fontWeight: "600",
         color: "#1E293B",
         marginBottom: 18
+    },
+    uploadToast: {
+        marginBottom: 16,
+        paddingVertical: 10,
+        paddingHorizontal: 14,
+        borderRadius: 12,
+        backgroundColor: "#E0F2FE",
+        borderWidth: 1,
+        borderColor: "#BAE6FD"
+    },
+    uploadToastText: {
+        fontSize: 13,
+        color: "#0F172A",
+        lineHeight: 18
     },
     detailSection: {
         backgroundColor: "#FFFFFF",

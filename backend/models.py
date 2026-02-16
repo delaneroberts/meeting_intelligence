@@ -27,16 +27,22 @@ class User(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     
+    # Premium fields
+    is_premium = db.Column(db.Boolean, default=False)
+    premium_quota = db.Column(db.Integer, default=0)
+
     # Relationships
     meetings = db.relationship('Meeting', backref='user', lazy=True, cascade='all, delete-orphan')
     settings = db.relationship('Setting', backref='user', lazy=True, cascade='all, delete-orphan')
-    
+
     def to_dict(self):
         return {
             'id': self.id,
             'username': self.username,
             'email': self.email,
             'created_at': self.created_at.isoformat(),
+            'is_premium': self.is_premium,
+            'premium_quota': self.premium_quota,
         }
 
 
@@ -74,7 +80,7 @@ class Meeting(db.Model):
     memo_json = db.Column(db.JSON)
     
     # Metadata
-    metadata_json = db.Column(db.JSON)  # {agenda: "", attendees: "", meeting_type: "", etc}
+    meeting_metadata = db.Column(db.JSON)  # {agenda: "", attendees: "", meeting_type: "", etc}
     
     # Timestamps
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
@@ -97,7 +103,7 @@ class Meeting(db.Model):
             'action_items': self.action_items_original,
             'action_items_english': self.action_items_english,
             'memo_json': self.memo_json,
-            'metadata': self.metadata_json,
+                'meeting_metadata': self.meeting_metadata,
         }
 
 

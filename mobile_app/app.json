@@ -1,27 +1,35 @@
 {
-    "expo": {
-        "name": "Meeting Intelligence",
-        "slug": "meeting-intelligence-mobile",
-        "scheme": "meeting-intelligence",
-        "version": "0.1.0",
-        "orientation": "portrait",
-        "userInterfaceStyle": "automatic",
-        "assetBundlePatterns": [
-            "**/*"
-        ],
-        "ios": {
-            "supportsTablet": true,
-            "infoPlist": {
-                "NSMicrophoneUsageDescription": "This app needs microphone access to record meeting audio."
-            }
-        },
-        "android": {
-            "adaptiveIcon": {
-                "backgroundColor": "#0F172A"
-            },
-            "permissions": [
-                "RECORD_AUDIO"
-            ]
-        }
+  "expo": {
+    "name": "Meeting Intelligence",
+    "slug": "meeting-intelligence-mobile",
+    "scheme": "meeting-intelligence",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "This app needs microphone access to record meeting audio."
+      },
+      "bundleIdentifier": "com.delaneroberts.meetingintelligencemobile"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0F172A"
+      },
+      "permissions": [
+        "RECORD_AUDIO",
+        "RECORD_AUDIO"
+      ],
+      "package": "com.anonymous.meetingintelligencemobile"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "fd2ce339-af8b-4099-9fdc-8dcecd71bdf7"
+      }
     }
+  }
 }

@@ -1,3 +1,4 @@
+
 import os
 import time
 import json
@@ -7,7 +8,34 @@ import re
 from datetime import datetime
 from io import BytesIO
 
-from flask import Flask, render_template, request, jsonify, send_file, abort, url_for
+
+from flask import Flask
+from backend.models import db
+from flask_migrate import Migrate
+
+# Create Flask app
+app = Flask(__name__)
+
+# Import config values
+from backend.config import (
+    UPLOAD_FOLDER as CONFIG_UPLOAD_FOLDER,
+    TRANSCRIPT_FOLDER as CONFIG_TRANSCRIPT_FOLDER,
+    FLASK_PORT,
+    SQLALCHEMY_DATABASE_URI,
+    SQLALCHEMY_TRACK_MODIFICATIONS,
+)
+
+# Set config
+app.config["UPLOAD_FOLDER"] = CONFIG_UPLOAD_FOLDER
+app.config["MAX_CONTENT_LENGTH"] = 25 * 1024 * 1024  # 25 MB
+app.config["SQLALCHEMY_DATABASE_URI"] = SQLALCHEMY_DATABASE_URI
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = SQLALCHEMY_TRACK_MODIFICATIONS
+
+# Initialize db and migrate
+db.init_app(app)
+migrate = Migrate(app, db)
+
+from flask import render_template, request, jsonify, send_file, abort, url_for
 from werkzeug.utils import secure_filename
 
 from openai import OpenAI
@@ -20,14 +48,7 @@ from reportlab.lib.units import inch
 # Import backend modules
 from backend.routes.api import api as api_blueprint
 from backend.services import transcription, translation, summarization, qa_detection, export
-from backend.config import (
-    UPLOAD_FOLDER as CONFIG_UPLOAD_FOLDER,
-    TRANSCRIPT_FOLDER as CONFIG_TRANSCRIPT_FOLDER,
-    FLASK_PORT,
-    SQLALCHEMY_DATABASE_URI,
-    SQLALCHEMY_TRACK_MODIFICATIONS,
-)
-from backend.models import db
+
 
 
 # ----------------------------
@@ -64,17 +85,7 @@ logger = logging.getLogger(__name__)
 # ----------------------------
 # Flask + OpenAI client
 # ----------------------------
-app = Flask(__name__)
-app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
-app.config["MAX_CONTENT_LENGTH"] = MAX_CONTENT_LENGTH
-app.config["SQLALCHEMY_DATABASE_URI"] = SQLALCHEMY_DATABASE_URI
-app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = SQLALCHEMY_TRACK_MODIFICATIONS
-
-db.init_app(app)
-
-# Register backend API blueprint
 app.register_blueprint(api_blueprint)
-
 client = OpenAI()  # reads OPENAI_API_KEY from environment
 
 
@@ -523,15 +534,13 @@ Transcript:
         return jsonify({"error": str(e)}), 500
 
 
+
 # ----------------------------
-# Main
+# Flask CLI entry point for migrations
 # ----------------------------
+
+# Allow running with 'python app.py' directly
 if __name__ == "__main__":
     if not os.environ.get("OPENAI_API_KEY"):
         logger.warning("WARNING: OPENAI_API_KEY is not set in the environment.")
-    # Allow connections from local network (iPhone/iPad on same WiFi)
-    # Port can be overridden with FLASK_PORT environment variable
-    # Example: export FLASK_PORT=8001 && python app.py
-    port = int(os.getenv("FLASK_PORT", 8001))
-    # Disable the reloader so uploads don't trigger a restart mid-request
-    app.run(host="0.0.0.0", port=port, debug=True, use_reloader=False)
+    app.run(host="0.0.0.0", port=8001, debug=True)

@@ -104,9 +104,16 @@ def process_audio():
 
         # Step 3: Summarize and extract action items
         try:
+            # Get user_id from request if provided, else default to 1
+            user_id = 1
+            if "user_id" in request.form:
+                try:
+                    user_id = int(request.form["user_id"])
+                except Exception:
+                    logger.warning("Invalid user_id in form, defaulting to 1")
             summary, action_items, memo_json = (
                 summarization.summarize_and_extract_actions(
-                    translated_transcript, agenda, detected_language
+                    translated_transcript, agenda, detected_language, user_id=user_id
                 )
             )
         except Exception as e:

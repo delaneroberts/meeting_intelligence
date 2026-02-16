@@ -54,7 +54,7 @@ export default function SettingsScreen({
         recordingQuality = "Standard",
         autoTranscribe = true,
         autoSummary = true,
-    promptSummaryLength = true,
+        promptSummaryLength = true,
         summaryLength = "Medium",
         meetingNameFormat = "Untitled {date} {time}",
         backgroundRecording = false,
