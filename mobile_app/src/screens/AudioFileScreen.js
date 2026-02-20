@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import {
+    ActivityIndicator,
     InteractionManager,
     Modal,
     Pressable,
@@ -10,9 +11,11 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import * as DocumentPicker from "expo-document-picker";
+// Use the legacy filesystem API to avoid the new File/Directory migration for now.
+// This matches the existing getInfoAsync/copyAsync usage in this app.
 import * as FileSystem from "expo-file-system/legacy";
-import RNFS from "react-native-fs";
-import MeetingNameScreen from "./MeetingNameScreen";
+import Constants from "expo-constants";
+import appConfig from "../config/appConfig";
 
 export default function AudioFileScreen({
     meetingName,
@@ -24,32 +27,10 @@ export default function AudioFileScreen({
     visible = true
 }) {
     const [isPicking, setIsPicking] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
     const [pickedFile, setPickedFile] = useState(null);
-    const [showNamePrompt, setShowNamePrompt] = useState(false);
     const [errorMessage, setErrorMessage] = useState("");
     const [selectedAt, setSelectedAt] = useState(null);
-
-    const fileBaseName = useMemo(() => {
-        if (!pickedFile?.name) {
-            return "";
-        }
-        const withoutExtension = pickedFile.name.replace(/\.[^/.]+$/, "").trim();
-        return withoutExtension;
-    }, [pickedFile]);
-
-    const defaultName = useMemo(() => {
-        const baseName = fileBaseName || "Untitled";
-        if (!selectedAt) {
-            return baseName;
-        }
-        const pad = (value) => value.toString().padStart(2, "0");
-        const month = pad(selectedAt.getMonth() + 1);
-        const day = pad(selectedAt.getDate());
-        const year = String(selectedAt.getFullYear()).slice(-2);
-        const hour = pad(selectedAt.getHours());
-        const minute = pad(selectedAt.getMinutes());
-        return `${baseName} ${month}/${day}/${year} ${hour}:${minute}`;
-    }, [fileBaseName, selectedAt]);
 
     const maxFileSizeBytes = useMemo(() => {
         const parsed = Number(maxFileSizeMb);
@@ -66,16 +47,36 @@ export default function AudioFileScreen({
         setIsPicking(true);
         setErrorMessage("");
         try {
+            console.log('[AudioFileScreen] Opening document picker');
+            const startPickAt = Date.now();
             const result = await DocumentPicker.getDocumentAsync({
                 type: ["audio/*"],
                 copyToCacheDirectory: true,
                 multiple: false
             });
-            if (result.canceled) {
+
+            console.log('[AudioFileScreen] DocumentPicker returned in', Date.now() - startPickAt, 'ms:', result);
+
+            // Expo DocumentPicker returns { type: 'cancel'|'success', uri, name, size }
+            // Older/newer apis may use `canceled` or `assets`. Handle both.
+            if (result == null) {
+                setErrorMessage("Unable to open the file picker.");
                 return;
             }
-            const file = result.assets?.[0];
-            if (!file?.uri) {
+            if (result.canceled === true || result.type === 'cancel') {
+                // user cancelled
+                return;
+            }
+
+            // Normalize result to a file-like object with .uri and .name
+            let file = null;
+            if (Array.isArray(result.assets) && result.assets.length) {
+                file = result.assets[0];
+            } else if (result.uri) {
+                file = { uri: result.uri, name: result.name || result.uri.split('/').pop(), size: result.size };
+            }
+
+            if (!file || !file.uri) {
                 setErrorMessage("Unable to read the selected file.");
                 return;
             }
@@ -89,39 +90,108 @@ export default function AudioFileScreen({
                 }
             }
             setPickedFile(file);
-            setSelectedAt(new Date());
-            setShowNamePrompt(true);
+            const baseName = file.name ? file.name.replace(/\.[^/.]+$/, "").trim() : "";
+            const defaultName = baseName || `Recording ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+            const displayName = baseName || `Recording ${new Date().toLocaleDateString()} ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+            await savePickedFileImmediate(file, displayName);
         } catch (error) {
+            // Log the error so Metro / device logs show the native exception
+            console.error('[AudioFileScreen] DocumentPicker error:', error);
             setErrorMessage("Unable to open the file picker.");
         } finally {
             setIsPicking(false);
         }
     };
 
-    const persistPickedFile = async (name) => {
-        if (!pickedFile?.uri) {
+    const sendDebugLog = async (level, message, meta = {}) => {
+        try {
+            const url = `${appConfig.apiBaseUrl}/debug/log`;
+            // Fire-and-forget, don't let this block UI
+            fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ level, message, meta }),
+            }).catch((e) => {
+                // ignore network errors; still print locally
+                console.warn('[AudioFileScreen] sendDebugLog failed:', e?.message || e);
+            });
+        } catch (e) {
+            // ignore
+        }
+    };
+
+    const persistPickedFile = async (name, fileOverride = null) => {
+        const file = fileOverride || pickedFile;
+        if (!file?.uri) {
             return null;
         }
-        const fileInfo = await FileSystem.getInfoAsync(pickedFile.uri);
+        const fileInfo = await FileSystem.getInfoAsync(file.uri);
         if (!fileInfo.exists) {
             throw new Error("Selected file missing");
         }
         const safeName = name.replace(/[^a-z0-9-_]/gi, "_");
         const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
-        const extensionFromName = pickedFile.name?.split(".").pop();
-        const extensionFromUri = pickedFile.uri.split(".").pop();
+        const extensionFromName = file.name?.split(".").pop();
+        const extensionFromUri = file.uri.split(".").pop();
         const extension = extensionFromName || extensionFromUri || "m4a";
         const targetFileName = `${safeName}_${timestamp}.${extension}`;
 
         const normalizePath = (uri) => decodeURI(uri.replace(/^file:\/\//, ""));
-        const sourcePath = normalizePath(pickedFile.uri);
+        const sourcePath = normalizePath(file.uri);
 
-        if (RNFS?.DocumentDirectoryPath) {
-            const targetDir = `${RNFS.DocumentDirectoryPath}/recordings`;
-            await RNFS.mkdir(targetDir);
-            const targetPath = `${targetDir}/${targetFileName}`;
-            await RNFS.copyFile(sourcePath, targetPath);
-            return `file://${targetPath}`;
+        // If running inside Expo Go (appOwnership === 'expo'), avoid requiring native-only modules.
+        // This prevents the "native module doesn't exist" crash in Expo Go.
+        let RNFS = null;
+        if (Constants?.appOwnership !== "expo") {
+            try {
+                // eslint-disable-next-line global-require, import/no-extraneous-dependencies
+                RNFS = require("react-native-fs");
+            } catch (err) {
+                RNFS = null;
+            }
+        }
+
+        if (RNFS) {
+            try {
+                console.log('[AudioFileScreen] RNFS available, attempting native copy');
+                sendDebugLog('info', 'RNFS available, attempting native copy');
+                if (RNFS.DocumentDirectoryPath) {
+                    const targetDir = `${RNFS.DocumentDirectoryPath}/recordings`;
+                    // ensure targetDir exists
+                    try {
+                        console.log('[AudioFileScreen] RNFS.mkdir targetDir=', targetDir);
+                        sendDebugLog('info', 'RNFS.mkdir start', { targetDir });
+                        const mkdirStart = Date.now();
+                        await RNFS.mkdir(targetDir);
+                        console.log('[AudioFileScreen] RNFS.mkdir done in', Date.now() - mkdirStart, 'ms');
+                        sendDebugLog('info', 'RNFS.mkdir done', { durationMs: Date.now() - mkdirStart, targetDir });
+                    } catch (e) {
+                        // ignore mkdir errors if it already exists
+                        console.log('[AudioFileScreen] RNFS.mkdir error (ignored):', e?.message || e);
+                        sendDebugLog('warn', 'RNFS.mkdir error (ignored)', { message: e?.message || e });
+                    }
+                    const targetPath = `${targetDir}/${targetFileName}`;
+                    try {
+                        console.log('[AudioFileScreen] RNFS.copyFile from=', sourcePath, 'to=', targetPath);
+                        sendDebugLog('info', 'RNFS.copyFile start', { sourcePath, targetPath });
+                        const copyStart = Date.now();
+                        await RNFS.copyFile(sourcePath, targetPath);
+                        console.log('[AudioFileScreen] RNFS.copyFile done in', Date.now() - copyStart, 'ms');
+                        sendDebugLog('info', 'RNFS.copyFile done', { durationMs: Date.now() - copyStart, targetPath });
+                        return `file://${targetPath}`;
+                    } catch (e) {
+                        console.log('[AudioFileScreen] RNFS.copyFile failed:', e?.message || e);
+                        sendDebugLog('error', 'RNFS.copyFile failed', { message: e?.message || e });
+                        // fall back to expo-file-system below
+                        RNFS = null;
+                    }
+                }
+            } catch (e) {
+                // If any RNFS operation fails, fall back to expo-file-system below.
+                console.log('[AudioFileScreen] RNFS operation error, falling back:', e?.message || e);
+                sendDebugLog('error', 'RNFS operation error, falling back', { message: e?.message || e });
+                RNFS = null;
+            }
         }
 
         const baseDirectory = FileSystem.documentDirectory || FileSystem.cacheDirectory;
@@ -134,35 +204,36 @@ export default function AudioFileScreen({
             await FileSystem.makeDirectoryAsync(directory, { intermediates: true });
         }
         const targetUri = `${directory}/${targetFileName}`;
-        await FileSystem.copyAsync({ from: pickedFile.uri, to: targetUri });
+        await FileSystem.copyAsync({ from: file.uri, to: targetUri });
         return targetUri;
     };
 
-    const handleSaveName = async (name) => {
-        if (!name.trim()) {
-            return;
-        }
-        setShowNamePrompt(false);
+    const savePickedFileImmediate = async (file, defaultName) => {
+        setErrorMessage("");
         onUploadStart?.();
+        setIsSaving(true);
         let didComplete = false;
         try {
-            await new Promise((resolve) => InteractionManager.runAfterInteractions(resolve));
             await new Promise((resolve) => requestAnimationFrame(resolve));
-            await new Promise((resolve) => setTimeout(resolve, 300));
-            const targetUri = await persistPickedFile(name.trim());
+            await new Promise((resolve) => setTimeout(resolve, 100));
+            await new Promise((resolve) => InteractionManager.runAfterInteractions(resolve));
+            await new Promise((resolve) => setTimeout(resolve, 200));
+
+            const targetUri = await persistPickedFile(defaultName.trim() || "Recording", file);
             if (!targetUri) {
                 setErrorMessage("Unable to save the selected file.");
                 throw new Error("Upload failed");
             }
             const newRecord = {
                 id: `${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
-                meetingName: name.trim() || "Untitled",
+                meetingName: defaultName.trim() || "Recording",
                 recordingUri: targetUri,
                 createdAt: new Date().toISOString(),
                 status: "saved",
                 transcript: "",
                 summary: ""
             };
+            await new Promise((resolve) => requestAnimationFrame(resolve));
             onSaveRecording?.(newRecord);
             onUploadComplete?.(newRecord.id);
             didComplete = true;
@@ -174,16 +245,11 @@ export default function AudioFileScreen({
             onUploadComplete?.(null);
             didComplete = true;
         } finally {
+            setIsSaving(false);
             if (!didComplete) {
                 onUploadComplete?.(null);
             }
         }
-    };
-
-    const handleCloseNamePrompt = () => {
-        setShowNamePrompt(false);
-        setPickedFile(null);
-        setSelectedAt(null);
     };
 
     return (
@@ -217,14 +283,12 @@ export default function AudioFileScreen({
                         ) : null}
                     </View>
                 </View>
-                {showNamePrompt && (
-                    <View style={styles.namePromptOverlay}>
-                        <MeetingNameScreen
-                            onClose={handleCloseNamePrompt}
-                            onStart={handleSaveName}
-                            initialValue={defaultName}
-                            buttonLabel="Save to Library"
-                        />
+                {isSaving && (
+                    <View style={styles.savingOverlay} pointerEvents="box-only">
+                        <View style={styles.savingCard}>
+                            <ActivityIndicator size="large" color="#1D71B8" />
+                            <Text style={styles.savingText}>Saving to library…</Text>
+                        </View>
                     </View>
                 )}
             </View>
@@ -313,5 +377,25 @@ const styles = StyleSheet.create({
         alignItems: "center",
         justifyContent: "center",
         backgroundColor: "rgba(15, 23, 42, 0.35)"
+    },
+    savingOverlay: {
+        ...StyleSheet.absoluteFillObject,
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: "rgba(15, 23, 42, 0.5)"
+    },
+    savingCard: {
+        backgroundColor: "#FFFFFF",
+        borderRadius: 16,
+        paddingVertical: 24,
+        paddingHorizontal: 32,
+        alignItems: "center",
+        minWidth: 200
+    },
+    savingText: {
+        marginTop: 12,
+        fontSize: 16,
+        fontWeight: "600",
+        color: "#2D3748"
     }
 });

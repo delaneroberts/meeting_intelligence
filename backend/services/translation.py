@@ -10,6 +10,8 @@ import logging
 import re
 from openai import OpenAI
 
+from .openai_wrapper import call_with_timeout, OpenAIError, OpenAITimeoutError
+
 logger = logging.getLogger(__name__)
 
 # Initialize OpenAI client
@@ -81,36 +83,35 @@ Text to analyze:
 """
     
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "user", "content": detection_prompt}
-            ],
-            temperature=0.0,
-            max_tokens=200,
-            response_format={"type": "json_object"},
-        )
-        
+        def _call():
+            return client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": detection_prompt}],
+                temperature=0.0,
+                max_tokens=200,
+                response_format={"type": "json_object"},
+            )
+
+        response = call_with_timeout(_call, timeout=30, name="language.detect")
         response_text = (response.choices[0].message.content or "").strip()
         result = json.loads(response_text)
-        
+
         logger.info(
             "Detected language: %s (code: %s, is_english: %s)",
-            result.get('detected_language'),
-            result.get('language_code'),
-            result.get('is_english')
+            result.get("detected_language"),
+            result.get("language_code"),
+            result.get("is_english"),
         )
-        
+
         return result
-        
+
     except json.JSONDecodeError as e:
         logger.warning("Failed to parse language detection response: %s", e)
-        return {
-            'detected_language': 'Unknown',
-            'language_code': 'unknown',
-            'is_english': False,
-        }
-    except Exception as e:
+        return {"detected_language": "Unknown", "language_code": "unknown", "is_english": False}
+    except OpenAITimeoutError:
+        logger.exception("Language detection timed out")
+        raise
+    except OpenAIError as e:
         logger.exception("Language detection API error: %s", e)
         raise
 
@@ -142,30 +143,33 @@ Provide ONLY the English translation, word-for-word and complete, with no explan
 English translation:"""
     
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "user", "content": translation_prompt}
-            ],
-            temperature=0.0,
-            max_tokens=4096,  # Max allowed for full transcript
-        )
-        
+        def _call_translate():
+            return client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": translation_prompt}],
+                temperature=0.0,
+                max_tokens=4096,
+            )
+
+        response = call_with_timeout(_call_translate, timeout=120, name="translate.text")
         translated_text = (response.choices[0].message.content or "").strip()
-        
+
         if translated_text:
             logger.info(
                 "Successfully translated %s text to English (%d chars -> %d chars)",
                 source_language,
                 len(text),
-                len(translated_text)
+                len(translated_text),
             )
             return translated_text
         else:
             logger.warning("Translation returned empty text")
             return text
-            
-    except Exception as e:
+
+    except OpenAITimeoutError:
+        logger.exception("Translation timed out")
+        raise
+    except OpenAIError as e:
         logger.exception("Translation API error: %s", e)
         raise
 
@@ -270,13 +274,22 @@ Text:
 {text}"""
     
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.0,
-            max_tokens=4096,
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
+        def _call_translate_text():
+            return client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.0,
+                max_tokens=4096,
+            )
+
+        resp = call_with_timeout(_call_translate_text, timeout=120, name="translate.text")
+        if not resp or not getattr(resp, "choices", None) or len(resp.choices) == 0:
+            return ""
+        content = getattr(resp.choices[0].message, "content", None)
+        return (content or "").strip()
+    except OpenAITimeoutError:
+        logger.exception("translate_text timed out")
+        raise
+    except OpenAIError as e:
         logger.exception("Translation error: %s", e)
         raise

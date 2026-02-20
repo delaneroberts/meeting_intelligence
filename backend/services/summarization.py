@@ -9,6 +9,8 @@ import json
 import logging
 from openai import OpenAI
 
+from .openai_wrapper import call_with_timeout, OpenAIError, OpenAITimeoutError
+
 logger = logging.getLogger(__name__)
 
 # Initialize OpenAI client
@@ -202,16 +204,20 @@ Transcript:
     # --- Attempt structured JSON output ---
     try:
         logger.debug("Attempting structured JSON summarization")
-        resp = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "You are precise and structured."},
-                {"role": "user", "content": prompt_text},
-            ],
-            temperature=0.2,
-            max_tokens=900,
-            response_format={"type": "json_object"},
-        )
+
+        def _call_structured():
+            return client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "You are precise and structured."},
+                    {"role": "user", "content": prompt_text},
+                ],
+                temperature=0.2,
+                max_tokens=900,
+                response_format={"type": "json_object"},
+            )
+
+        resp = call_with_timeout(_call_structured, timeout=60, name="summarize.structured")
 
         content = (resp.choices[0].message.content or "").strip()
         data = json.loads(content) if content else {}
@@ -239,6 +245,10 @@ Transcript:
 
     except json.JSONDecodeError as e:
         logger.warning("JSON parsing failed in structured summarization: %s", e)
+    except OpenAITimeoutError:
+        logger.warning("Structured summarization timed out; falling back")
+    except OpenAIError as e:
+        logger.warning("Structured summarization upstream error: %s; falling back", e)
     except Exception as e:
         logger.warning("Structured summarization failed (will use fallback): %s", e)
 
@@ -254,12 +264,15 @@ Transcript:
 """.strip()
 
     try:
-        resp = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": fallback_prompt}],
-            temperature=0.2,
-            max_tokens=900,
-        )
+        def _call_fallback():
+            return client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": fallback_prompt}],
+                temperature=0.2,
+                max_tokens=900,
+            )
+
+        resp = call_with_timeout(_call_fallback, timeout=30, name="summarize.fallback")
         text = (resp.choices[0].message.content or "").strip()
         
         # Extract action items (lines starting with "- ")
@@ -271,6 +284,13 @@ Transcript:
         logger.info("Fallback summarization succeeded, %d action items extracted", len(action_items))
         return text, action_items, {}
         
+    except OpenAITimeoutError:
+        logger.exception("Fallback summarization timed out")
+        return "", [], {}
+    except OpenAIError as e:
+        logger.exception("Fallback summarization upstream error: %s", e)
+        return "", [], {}
     except Exception as e:
         logger.exception("Fallback summarization also failed: %s", e)
         return "", [], {}
+    return "", [], {}

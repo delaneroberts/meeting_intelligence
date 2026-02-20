@@ -9,11 +9,16 @@ import {
     Image,
     TextInput,
     Share,
-    ScrollView
+    ScrollView,
+    Animated
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import Constants from "expo-constants";
+// Use the legacy filesystem API so existing getInfoAsync/uploadAsync calls keep working
+// without migrating to the new File/Directory classes right now.
+import * as FileSystem from "expo-file-system/legacy";
+import { InteractionManager } from 'react-native';
 import { Audio } from "expo-av";
 import * as Clipboard from "expo-clipboard";
 import {
@@ -176,6 +181,8 @@ export default function HomeScreen({
     const [isTranslating, setIsTranslating] = useState(false);
     const [translatedLanguage, setTranslatedLanguage] = useState("");
     const [isTranscribing, setIsTranscribing] = useState(false);
+    const [transcriptProgressPercent, setTranscriptProgressPercent] = useState(0);
+    const [transcriptProgressMessage, setTranscriptProgressMessage] = useState("");
     const transcriptAbortRef = useRef(null);
     const transcriptTimeoutRef = useRef(null);
     const swipeableRefs = useRef(new Map());
@@ -186,6 +193,56 @@ export default function HomeScreen({
     const [sound, setSound] = useState(null);
     const [progressBarWidth, setProgressBarWidth] = useState(0);
 
+    // Heartbeat for detecting JS-thread liveness during freezes.
+    const [heartbeatCount, setHeartbeatCount] = useState(0);
+    const [lastHeartbeatAt, setLastHeartbeatAt] = useState(null);
+
+    // UI-thread heartbeat (native driver) to detect native/UI-thread freezes.
+    const uiPulse = useRef(new Animated.Value(0)).current;
+
+    const sendDebugLog = async (level, message, meta = {}) => {
+        try {
+            const url = `${appConfig.apiBaseUrl}/debug/log`;
+            fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ level, message, meta }),
+            }).catch(() => { });
+        } catch (e) {
+            // ignore
+        }
+    };
+
+    useEffect(() => {
+        let mounted = true;
+        let counter = 0;
+        const interval = setInterval(() => {
+            if (!mounted) return;
+            counter += 1;
+            setHeartbeatCount((c) => c + 1);
+            setLastHeartbeatAt(new Date().toISOString());
+            // occasionally mirror to server (every 10 ticks ~= 4s)
+            if (counter % 10 === 0) {
+                sendDebugLog('info', 'heartbeat', { count: counter, ts: new Date().toISOString() });
+            }
+        }, 400);
+
+        // Start a native-driven UI pulse animation. This uses useNativeDriver so it
+        // runs on the UI thread itself; if the UI thread is blocked the animation will stop.
+        const pulse = Animated.loop(
+            Animated.sequence([
+                Animated.timing(uiPulse, { toValue: 1, duration: 350, useNativeDriver: true }),
+                Animated.timing(uiPulse, { toValue: 0, duration: 350, useNativeDriver: true })
+            ])
+        );
+        pulse.start();
+        return () => {
+            mounted = false;
+            pulse.stop();
+            clearInterval(interval);
+        };
+    }, []);
+
     const materialsLimits = appConfig.meetingMaterials;
 
     const meetingList = useMemo(() => {
@@ -194,20 +251,20 @@ export default function HomeScreen({
         }
         return libraryItems.map((item) => {
             const created = item.createdAt ? new Date(item.createdAt) : new Date();
-            const date = created.toLocaleDateString(undefined, {
-                month: "short",
-                day: "numeric"
-            });
-            const time = created.toLocaleTimeString(undefined, {
-                hour: "numeric",
-                minute: "2-digit"
-            });
-            const statusLabel = item.status === "transcribing" ? "Transcribing" : "Saved";
+            const pad = (n) => String(n).padStart(2, "0");
+            const dateStr = `${created.getFullYear()}-${pad(created.getMonth() + 1)}-${pad(created.getDate())}`;
+            const timeStr = `${pad(created.getHours())}:${pad(created.getMinutes())}`;
+            const statusLabel =
+                item.status === "transcribing"
+                    ? "Transcribing…"
+                    : item.transcript
+                        ? "Transcribed"
+                        : "Saved";
             return {
                 id: item.id,
                 title: item.meetingName || "Untitled",
-                date,
-                time,
+                date: dateStr,
+                time: timeStr,
                 statusLabel,
                 recordingUri: item.recordingUri,
                 summary: item.summary || "",
@@ -525,7 +582,7 @@ export default function HomeScreen({
     };
 
     const buildSummaryTemplate = (length, transcriptOverride = "") => {
-        const meetingTitle = selectedLibraryItem?.title || "Meeting";
+        const meetingTitle = selectedLibraryItem?.title || selectedLibraryItem?.meetingName || "Meeting";
         const transcriptSource = transcriptOverride || selectedLibraryItem?.transcript || "";
         const cleanedTranscript = transcriptSource.replace(/\s+/g, " ").trim();
         const sentences = cleanedTranscript
@@ -761,55 +818,113 @@ export default function HomeScreen({
         let languageValue = "";
         let errorMessage = "";
         try {
-            transcriptTimeoutRef.current = setTimeout(() => {
-                controller.abort();
-            }, 30000);
+            transcriptTimeoutRef.current = setTimeout(() => controller.abort(), 15 * 60 * 1000);
+            setTranscriptProgressPercent(0);
+            setTranscriptProgressMessage("Starting…");
+            await new Promise((resolve) => requestAnimationFrame(resolve));
+            await new Promise((resolve) => setTimeout(resolve, 150));
+            await new Promise((resolve) => InteractionManager.runAfterInteractions(resolve));
+            await new Promise((resolve) => requestAnimationFrame(resolve));
+
+            const uploadUrl = `${apiBaseUrl}/api/process`;
+            const jobId = `job-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
             const formData = new FormData();
             formData.append("audio_file", {
                 uri: item.recordingUri,
-                name: `${item.title || "meeting"}.m4a`,
+                name: "audio.m4a",
                 type: "audio/m4a"
             });
-            const response = await fetch(`${apiBaseUrl}/api/process`, {
+            formData.append("progress_job_id", jobId);
+            formData.append("user_id", "1");
+
+            const uploadResponse = await fetch(uploadUrl, {
                 method: "POST",
                 body: formData,
                 signal: controller.signal
             });
-            const payload = await response.json();
-            if (!response.ok) {
-                const message = payload?.error || "Transcription failed.";
-                throw new Error(message);
-            }
-            transcriptValue = payload?.transcript || "";
-            languageValue = payload?.original_language || "";
-            const createdAt = new Date().toISOString();
-            setTranscriptText(transcriptValue);
-            setTranscriptLanguage(languageValue);
-            setTranslatedLanguage("");
-            onUpdateRecording?.(item.id, {
-                transcript: transcriptValue,
-                transcriptLanguage: languageValue,
-                transcriptCreatedAt: createdAt,
-                transcriptTranslatedText: "",
-                transcriptTranslatedLanguage: "",
-                transcriptTranslatedAt: "",
-                status: "saved"
-            });
-            setSelectedLibraryItem((current) =>
-                current && current.id === item.id
-                    ? {
-                        ...current,
-                        transcript: transcriptValue,
-                        transcriptLanguage: languageValue,
-                        transcriptCreatedAt: createdAt,
-                        transcriptTranslatedText: "",
-                        transcriptTranslatedLanguage: "",
-                        transcriptTranslatedAt: "",
-                        status: "saved"
+            const responseBody = await uploadResponse.json().catch(() => ({}));
+
+            if (uploadResponse.status === 202) {
+                const statusUrl = `${apiBaseUrl}/api/process/status/${jobId}`;
+                const pollIntervalMs = 1500;
+                while (true) {
+                    if (controller.signal?.aborted) throw new Error("AbortError");
+                    const statusRes = await fetch(statusUrl, { signal: controller.signal });
+                    const data = await statusRes.json().catch(() => ({}));
+                    setTranscriptProgressPercent(data.progress ?? 0);
+                    setTranscriptProgressMessage(data.message ?? "");
+                    if (data.status === "completed" && data.result) {
+                        transcriptValue = data.result.transcript ?? data.result.english_transcript ?? "";
+                        languageValue = data.result.original_language ?? "";
+                        const createdAt = new Date().toISOString();
+                        setTranscriptText(transcriptValue);
+                        setTranscriptLanguage(languageValue);
+                        setTranslatedLanguage("");
+                        onUpdateRecording?.(item.id, {
+                            transcript: transcriptValue,
+                            transcriptLanguage: languageValue,
+                            transcriptCreatedAt: createdAt,
+                            transcriptTranslatedText: "",
+                            transcriptTranslatedLanguage: "",
+                            transcriptTranslatedAt: "",
+                            status: "saved"
+                        });
+                        setSelectedLibraryItem((current) =>
+                            current && current.id === item.id
+                                ? {
+                                    ...current,
+                                    transcript: transcriptValue,
+                                    transcriptLanguage: languageValue,
+                                    transcriptCreatedAt: createdAt,
+                                    transcriptTranslatedText: "",
+                                    transcriptTranslatedLanguage: "",
+                                    transcriptTranslatedAt: "",
+                                    status: "saved"
+                                }
+                                : current
+                        );
+                        onComplete?.({ transcriptValue, languageValue });
+                        break;
                     }
-                    : current
-            );
-            onComplete?.({ transcriptValue, languageValue });
+                    if (data.status === "error") {
+                        throw new Error(data.error || data.message || "Processing failed.");
+                    }
+                    await new Promise((r) => setTimeout(r, pollIntervalMs));
+                }
+            } else if (uploadResponse.ok && uploadResponse.status === 200) {
+                transcriptValue = responseBody?.transcript ?? responseBody?.english_transcript ?? "";
+                languageValue = responseBody?.original_language ?? "";
+                const createdAt = new Date().toISOString();
+                setTranscriptText(transcriptValue);
+                setTranscriptLanguage(languageValue);
+                setTranslatedLanguage("");
+                onUpdateRecording?.(item.id, {
+                    transcript: transcriptValue,
+                    transcriptLanguage: languageValue,
+                    transcriptCreatedAt: createdAt,
+                    transcriptTranslatedText: "",
+                    transcriptTranslatedLanguage: "",
+                    transcriptTranslatedAt: "",
+                    status: "saved"
+                });
+                setSelectedLibraryItem((current) =>
+                    current && current.id === item.id
+                        ? {
+                            ...current,
+                            transcript: transcriptValue,
+                            transcriptLanguage: languageValue,
+                            transcriptCreatedAt: createdAt,
+                            transcriptTranslatedText: "",
+                            transcriptTranslatedLanguage: "",
+                            transcriptTranslatedAt: "",
+                            status: "saved"
+                        }
+                        : current
+                );
+                onComplete?.({ transcriptValue, languageValue });
+            } else {
+                throw new Error(responseBody?.error || "Transcription failed.");
+            }
         } catch (error) {
             errorMessage =
                 error?.name === "AbortError"
@@ -828,6 +943,8 @@ export default function HomeScreen({
             transcriptAbortRef.current = null;
             setIsTranscribing(false);
             setShowTranscriptProgress(false);
+            setTranscriptProgressPercent(0);
+            setTranscriptProgressMessage("");
             if (showTranscriptModal) {
                 setShowTranscriptModal(true);
             }
@@ -938,7 +1055,7 @@ export default function HomeScreen({
         if (!summaryText) {
             return;
         }
-        const meetingTitle = selectedLibraryItem?.title || "Meeting";
+        const meetingTitle = selectedLibraryItem?.title || selectedLibraryItem?.meetingName || "Meeting";
         const summaryLanguage = selectedLibraryItem?.summaryLanguage
             ? `Language: ${selectedLibraryItem.summaryLanguage}`
             : "Language: Unknown";
@@ -954,7 +1071,7 @@ export default function HomeScreen({
         if (!transcriptToShare) {
             return;
         }
-        const meetingTitle = selectedLibraryItem?.title || "Meeting";
+        const meetingTitle = selectedLibraryItem?.title || selectedLibraryItem?.meetingName || "Meeting";
         const languageLabel = selectedLibraryItem?.transcriptLanguage
             ? `Language: ${selectedLibraryItem.transcriptLanguage}`
             : "Language: Unknown";
@@ -995,6 +1112,20 @@ export default function HomeScreen({
 
     return (
         <View style={styles.container}>
+            {/* Heartbeat overlay: shows JS-thread tick count and last timestamp */}
+            <View style={styles.heartbeatOverlay} pointerEvents="none">
+                <Text style={styles.heartbeatText}>HB: {heartbeatCount}</Text>
+                <Text style={styles.heartbeatSub}>{lastHeartbeatAt ? lastHeartbeatAt.split('T')[1].split('Z')[0] : '-'}</Text>
+            </View>
+            {/* UI-thread pulse (runs via native driver). If this stops while HB keeps incrementing,
+                the UI thread is blocked. */}
+            <Animated.View
+                style={[
+                    styles.uiPulse,
+                    { opacity: uiPulse.interpolate({ inputRange: [0, 1], outputRange: [0.25, 1] }) }
+                ]}
+                pointerEvents="none"
+            />
             {!showLibraryDetail && (
                 <>
                     <View style={styles.content}>
@@ -1154,7 +1285,7 @@ export default function HomeScreen({
                             </TouchableOpacity>
                         </View>
                         <Text style={styles.detailMeetingName}>
-                            {selectedLibraryItem?.title || "Untitled"}
+                            {selectedLibraryItem?.title || selectedLibraryItem?.meetingName || "Untitled"}
                         </Text>
                         {showUploadToast ? (
                             <View style={styles.uploadToast}>
@@ -1650,7 +1781,7 @@ export default function HomeScreen({
             <Modal animationType="fade" transparent visible={showSummaryProgress}>
                 <View style={styles.progressOverlay}>
                     <CreatingSummaryScreen
-                        meetingName={selectedLibraryItem?.title}
+                        meetingName={selectedLibraryItem?.title || selectedLibraryItem?.meetingName}
                         onBack={handleSummaryProgressClose}
                         title="Transcript and Summary"
                         steps={[
@@ -1658,6 +1789,8 @@ export default function HomeScreen({
                             "Generating summary"
                         ]}
                         cancelLabel="Cancel"
+                        progress={transcriptProgressPercent}
+                        progressMessage={transcriptProgressMessage ? `${transcriptProgressMessage} ${Math.round(transcriptProgressPercent * 100)}%` : `${Math.round(transcriptProgressPercent * 100)}%`}
                     />
                 </View>
             </Modal>
@@ -1732,11 +1865,13 @@ export default function HomeScreen({
             <Modal animationType="fade" transparent visible={showTranscriptProgress}>
                 <View style={styles.progressOverlay}>
                     <CreatingSummaryScreen
-                        meetingName={selectedLibraryItem?.title}
+                        meetingName={selectedLibraryItem?.title || selectedLibraryItem?.meetingName}
                         onBack={handleTranscriptProgressClose}
                         title="Transcribing"
                         steps={["Transcribing meeting"]}
                         cancelLabel="Cancel"
+                        progress={transcriptProgressPercent}
+                        progressMessage={transcriptProgressMessage ? `${transcriptProgressMessage} ${Math.round(transcriptProgressPercent * 100)}%` : `${Math.round(transcriptProgressPercent * 100)}%`}
                     />
                 </View>
             </Modal>
@@ -1746,7 +1881,7 @@ export default function HomeScreen({
                     <View style={styles.transcriptCard}>
                         <View style={styles.transcriptHeader}>
                             <Text style={styles.transcriptTitle}>
-                                {selectedLibraryItem?.title || "Meeting"}
+                                {selectedLibraryItem?.title || selectedLibraryItem?.meetingName || "Meeting"}
                             </Text>
                             <View style={styles.transcriptHeaderActions}>
                                 <TouchableOpacity
@@ -1788,7 +1923,7 @@ export default function HomeScreen({
                     <View style={styles.transcriptCard}>
                         <View style={styles.transcriptHeader}>
                             <Text style={styles.transcriptTitle}>
-                                {selectedLibraryItem?.title || "Meeting"}
+                                {selectedLibraryItem?.title || selectedLibraryItem?.meetingName || "Meeting"}
                             </Text>
                             <View style={styles.transcriptHeaderActions}>
                                 <TouchableOpacity
@@ -1859,6 +1994,37 @@ const styles = StyleSheet.create({
         fontSize: 18,
         color: "#4A5568",
         marginTop: 2
+    },
+    heartbeatOverlay: {
+        position: 'absolute',
+        top: 12,
+        right: 12,
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        paddingHorizontal: 8,
+        paddingVertical: 6,
+        borderRadius: 8,
+        zIndex: 9999,
+        alignItems: 'center'
+    },
+    heartbeatText: {
+        color: '#E6FFFA',
+        fontSize: 12,
+        fontWeight: '700'
+    },
+    heartbeatSub: {
+        color: '#CFECE9',
+        fontSize: 10,
+        marginTop: 2
+    },
+    uiPulse: {
+        position: 'absolute',
+        top: 8,
+        right: 64,
+        width: 12,
+        height: 12,
+        borderRadius: 6,
+        backgroundColor: '#34D399',
+        zIndex: 9999,
     },
     prompt: {
         textAlign: "center",

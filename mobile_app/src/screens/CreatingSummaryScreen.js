@@ -1,6 +1,5 @@
-import React from "react";
-import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import React, { useEffect, useRef } from "react";
+import { View, Text, StyleSheet, TouchableOpacity, Animated } from "react-native";
 
 export default function CreatingSummaryScreen({
     meetingName,
@@ -8,24 +7,70 @@ export default function CreatingSummaryScreen({
     title = "Creating Summary",
     steps = ["Transcribing meeting", "Analyzing agenda", "Extracting action items"],
     helperText = "This usually takes under a minute.",
-    cancelLabel = "Cancel"
+    cancelLabel = "Cancel",
+    progress = null,
+    progressMessage = null
 }) {
+    const progressAnim = useRef(new Animated.Value(0)).current;
+    const hasServerProgress = typeof progress === "number" && progress >= 0;
+
+    useEffect(() => {
+        if (hasServerProgress) return;
+        let mounted = true;
+        const loop = () => {
+            if (!mounted) return;
+            progressAnim.setValue(0);
+            Animated.timing(progressAnim, {
+                toValue: 1,
+                duration: 2000,
+                useNativeDriver: false
+            }).start(({ finished }) => {
+                if (finished && mounted) loop();
+            });
+        };
+        loop();
+        return () => {
+            mounted = false;
+            progressAnim.stopAnimation();
+        };
+    }, [progressAnim, hasServerProgress]);
+
+    const progressWidthPercent = hasServerProgress
+        ? `${Math.round((progress || 0) * 100)}%`
+        : null;
+    const progressWidthAnimated = progressAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: ["0%", "100%"]
+    });
+
     return (
         <View style={styles.container}>
             <View style={styles.modalCard}>
                 <Text style={styles.screenTitle}>{title}</Text>
-                <View style={styles.stepList}>
-                    {steps.map((step) => (
-                        <View key={step} style={styles.stepRow}>
-                            <Ionicons name="ellipse-outline" size={18} color="#9DC6EA" />
-                            <Text style={styles.stepText}>{step}</Text>
-                        </View>
-                    ))}
+                <View style={styles.progressBarTrack}>
+                    {hasServerProgress ? (
+                        <View style={[styles.progressBarFill, { width: progressWidthPercent }]} />
+                    ) : (
+                        <Animated.View style={[styles.progressBarFill, { width: progressWidthAnimated }]} />
+                    )}
                 </View>
-                <Text style={styles.helperText}>
-                    {helperText}
-                    {meetingName ? ` (${meetingName})` : ""}
-                </Text>
+                {hasServerProgress && progressMessage ? (
+                    <Text style={styles.progressMessage}>{progressMessage}</Text>
+                ) : (
+                    <View style={styles.stepList}>
+                        {steps.map((step) => (
+                            <View key={step} style={styles.stepRow}>
+                                <Text style={styles.stepText}>{step}</Text>
+                            </View>
+                        ))}
+                    </View>
+                )}
+                {!hasServerProgress && (
+                    <Text style={styles.helperText}>
+                        {helperText}
+                        {meetingName ? ` (${meetingName})` : ""}
+                    </Text>
+                )}
                 <TouchableOpacity style={styles.primaryButton} onPress={onBack}>
                     <Text style={styles.primaryButtonText}>{cancelLabel}</Text>
                 </TouchableOpacity>
@@ -59,18 +104,37 @@ const styles = StyleSheet.create({
         color: "#2D3748",
         marginBottom: 16
     },
+    progressBarTrack: {
+        height: 6,
+        backgroundColor: "#E2E8F0",
+        borderRadius: 3,
+        overflow: "hidden",
+        marginBottom: 20
+    },
+    progressBarFill: {
+        height: "100%",
+        backgroundColor: "#1D71B8",
+        borderRadius: 3
+    },
+    progressMessage: {
+        fontSize: 15,
+        color: "#5B667A",
+        fontWeight: "600",
+        textAlign: "center",
+        marginBottom: 8
+    },
     stepList: {
         gap: 14
     },
     stepRow: {
-        flexDirection: "row",
         alignItems: "center",
-        gap: 12
+        justifyContent: "center"
     },
     stepText: {
         fontSize: 15,
         color: "#5B667A",
-        fontWeight: "600"
+        fontWeight: "600",
+        textAlign: "center"
     },
     helperText: {
         marginTop: 16,

@@ -10,6 +10,8 @@ import json
 import logging
 from openai import OpenAI
 
+from .openai_wrapper import call_with_timeout, OpenAIError, OpenAITimeoutError
+
 logger = logging.getLogger(__name__)
 
 # Initialize OpenAI client
@@ -80,17 +82,17 @@ Full transcript context:
 """
     
     try:
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "user", "content": detection_prompt}
-            ],
-            temperature=0.5,
-            max_tokens=1000,
-        )
-        
+        def _call():
+            return client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": detection_prompt}],
+                temperature=0.5,
+                max_tokens=1000,
+            )
+
+        response = call_with_timeout(_call, timeout=60, name="qa.detect")
         response_text = (response.choices[0].message.content or "").strip()
-        
+
         try:
             questions = json.loads(response_text)
             if not isinstance(questions, list):
@@ -99,12 +101,15 @@ Full transcript context:
         except json.JSONDecodeError as e:
             logger.warning("Failed to parse question detection response: %s", e)
             return []
-        
+
         logger.info("Detected %d questions", len(questions))
         return questions
-        
-    except Exception as e:
-        logger.exception("Question detection API error: %s", e)
+
+    except OpenAITimeoutError:
+        logger.exception("Question detection timed out")
+        raise
+    except OpenAIError as e:
+        logger.exception("Question detection upstream error: %s", e)
         raise
 
 

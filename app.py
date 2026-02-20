@@ -39,6 +39,7 @@ from flask import render_template, request, jsonify, send_file, abort, url_for
 from werkzeug.utils import secure_filename
 
 from openai import OpenAI
+from backend.services.openai_wrapper import call_with_timeout, OpenAIError, OpenAITimeoutError
 
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, ListFlowable, ListItem
@@ -86,8 +87,21 @@ logger = logging.getLogger(__name__)
 # Flask + OpenAI client
 # ----------------------------
 app.register_blueprint(api_blueprint)
-client = OpenAI()  # reads OPENAI_API_KEY from environment
+# Debug: show what this process sees for the OPENAI_API_KEY (masked)
+try:
+    _k = os.getenv("OPENAI_API_KEY")
+    if _k:
+        print("DEBUG OPENAI_API_KEY =", (_k[:10] + "..." + _k[-4:]))
+        print("DEBUG OPENAI_API_KEY len =", len(_k))
+    else:
+        print("DEBUG OPENAI_API_KEY = None")
+        print("DEBUG OPENAI_API_KEY len = None")
+except Exception:
+    # Never fail startup due to debug printing
+    pass
 
+# Instantiate OpenAI client (explicit key; fail fast if missing)
+client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
 
 # ----------------------------
 # Housekeeping
@@ -289,17 +303,27 @@ def process():
 
 Summary:
 {summary}"""
-            translate_response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": translate_prompt}],
-                max_tokens=2048,
-            )
-            original_summary = translate_response.choices[0].message.content.strip()
-            logger.info("Translated summary to %s", detected_language)
-        except Exception as e:
-            logger.warning("Could not translate summary to %s: %s", detected_language, e)
-            original_summary = summary  # Fallback to English
-        
+
+            def _call_summary_translate():
+                return client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[{"role": "user", "content": translate_prompt}],
+                    max_tokens=2048,
+                )
+
+            try:
+                translate_response = call_with_timeout(_call_summary_translate, timeout=30, name="app.translate.summary")
+                original_summary = translate_response.choices[0].message.content.strip()
+                logger.info("Translated summary to %s", detected_language)
+            except (OpenAITimeoutError, OpenAIError) as e:
+                logger.warning("Could not translate summary to %s: %s", detected_language, e)
+                original_summary = summary  # Fallback to English
+
+        except Exception:
+            # Keep original summary on any unexpected error
+            logger.exception("Unexpected error during summary translation")
+            original_summary = summary
+
         # Translate action items
         try:
             action_items_text = "\n".join(action_items)
@@ -307,18 +331,26 @@ Summary:
 
 Action Items:
 {action_items_text}"""
-            action_items_response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": action_items_prompt}],
-                max_tokens=1024,
-            )
-            translated_items_text = action_items_response.choices[0].message.content.strip()
-            # Parse the translated items back into a list
-            original_action_items = [item.strip() for item in translated_items_text.split('\n') if item.strip()]
-            logger.info("Translated action items to %s", detected_language)
-        except Exception as e:
-            logger.warning("Could not translate action items to %s: %s", detected_language, e)
-            original_action_items = action_items  # Fallback to English
+
+            def _call_items_translate():
+                return client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[{"role": "user", "content": action_items_prompt}],
+                    max_tokens=1024,
+                )
+
+            try:
+                action_items_response = call_with_timeout(_call_items_translate, timeout=30, name="app.translate.items")
+                translated_items_text = action_items_response.choices[0].message.content.strip()
+                # Parse the translated items back into a list
+                original_action_items = [item.strip() for item in translated_items_text.split('\n') if item.strip()]
+                logger.info("Translated action items to %s", detected_language)
+            except (OpenAITimeoutError, OpenAIError) as e:
+                logger.warning("Could not translate action items to %s: %s", detected_language, e)
+                original_action_items = action_items  # Fallback to English
+        except Exception:
+            logger.exception("Unexpected error during action items translation")
+            original_action_items = action_items
 
     # Save canonical meeting artifact JSON
     meeting_id = new_meeting_id()
@@ -456,30 +488,33 @@ Full transcript context:
 \"\"\"{full_transcript}\"\"\"
 """
 
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "user", "content": detection_prompt}
-            ],
-            temperature=0.5,
-            max_tokens=1000,
-        )
-
-        response_text = (response.choices[0].message.content or "").strip()
-        
         try:
-            questions = json.loads(response_text)
-            if not isinstance(questions, list):
+            def _call_detect():
+                return client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[{"role": "user", "content": detection_prompt}],
+                    temperature=0.5,
+                    max_tokens=1000,
+                )
+
+            resp = call_with_timeout(_call_detect, timeout=30, name="app.qa.detect")
+            response_text = (resp.choices[0].message.content or "").strip()
+
+            try:
+                questions = json.loads(response_text)
+                if not isinstance(questions, list):
+                    questions = []
+            except json.JSONDecodeError:
+                logger.warning("Failed to parse question detection response: %s", response_text)
                 questions = []
-        except json.JSONDecodeError:
-            logger.warning("Failed to parse question detection response: %s", response_text)
-            questions = []
 
-        logger.info("Detected %d questions", len(questions))
+            logger.info("Detected %d questions", len(questions))
 
-        return jsonify({
-            "questions": questions
-        })
+            return jsonify({"questions": questions})
+
+        except (OpenAITimeoutError, OpenAIError) as e:
+            logger.exception("Upstream API error during question detection: %s", e)
+            return jsonify({"questions": [], "error": "Upstream API error during question detection."}), 502
 
     except Exception as e:
         logger.exception("Question detection error: %s", e)
@@ -503,32 +538,41 @@ def translate_content():
 
 Summary:
 {summary}"""
-        
-        summary_response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": summary_prompt}],
-            max_tokens=2048,
-        )
-        translated_summary = summary_response.choices[0].message.content.strip()
-        
+
+        def _call_summary():
+            return client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": summary_prompt}],
+                max_tokens=2048,
+            )
+
+        summary_resp = call_with_timeout(_call_summary, timeout=60, name="app.translate.summary_api")
+        translated_summary = summary_resp.choices[0].message.content.strip()
+
         # Translate transcript
         transcript_prompt = f"""Translate the following meeting transcript to {target_language}. Maintain the speaker labels and structure. Only provide the translated text, nothing else.
 
 Transcript:
 {transcript}"""
-        
-        transcript_response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": transcript_prompt}],
-            max_tokens=4096,
-        )
-        translated_transcript = transcript_response.choices[0].message.content.strip()
-        
+
+        def _call_transcript():
+            return client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": transcript_prompt}],
+                max_tokens=4096,
+            )
+
+        transcript_resp = call_with_timeout(_call_transcript, timeout=120, name="app.translate.transcript_api")
+        translated_transcript = transcript_resp.choices[0].message.content.strip()
+
         return jsonify({
             "translated_summary": translated_summary,
             "translated_transcript": translated_transcript,
         })
-    
+
+    except (OpenAITimeoutError, OpenAIError) as e:
+        logger.exception("Upstream API error during translation: %s", e)
+        return jsonify({"error": "Upstream API error during translation."}), 502
     except Exception as e:
         logger.exception("Translation error: %s", e)
         return jsonify({"error": str(e)}), 500
