@@ -1,5 +1,8 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import {
+    FlatList,
+    Modal,
+    Pressable,
     ScrollView,
     StyleSheet,
     Switch,
@@ -49,6 +52,55 @@ export default function SettingsScreen({
     const recordingOptions = useMemo(() => ["Standard", "High", "Lossless"], []);
     const summaryOptions = useMemo(() => ["Short", "Medium", "Detailed"], []);
     const themeOptions = useMemo(() => ["Light", "Dark", "System"], []);
+    const transcriptionLanguageOptions = useMemo(
+        () => [
+            { label: "Auto-detect", value: "auto" },
+            { label: "Arabic", value: "ar" },
+            { label: "Bulgarian", value: "bg" },
+            { label: "Cantonese", value: "yue" },
+            { label: "Croatian", value: "hr" },
+            { label: "Czech", value: "cs" },
+            { label: "Danish", value: "da" },
+            { label: "Dutch", value: "nl" },
+            { label: "English", value: "en" },
+            { label: "Estonian", value: "et" },
+            { label: "Finnish", value: "fi" },
+            { label: "French", value: "fr" },
+            { label: "German", value: "de" },
+            { label: "Greek", value: "el" },
+            { label: "Hebrew", value: "he" },
+            { label: "Hindi", value: "hi" },
+            { label: "Hungarian", value: "hu" },
+            { label: "Indonesian", value: "id" },
+            { label: "Italian", value: "it" },
+            { label: "Japanese", value: "ja" },
+            { label: "Korean", value: "ko" },
+            { label: "Latvian", value: "lv" },
+            { label: "Lithuanian", value: "lt" },
+            { label: "Malay", value: "ms" },
+            { label: "Mandarin Chinese", value: "zh" },
+            { label: "Norwegian", value: "nb" },
+            { label: "Persian", value: "fa" },
+            { label: "Polish", value: "pl" },
+            { label: "Portuguese", value: "pt" },
+            { label: "Romanian", value: "ro" },
+            { label: "Russian", value: "ru" },
+            { label: "Serbian", value: "sr" },
+            { label: "Slovak", value: "sk" },
+            { label: "Slovenian", value: "sl" },
+            { label: "Spanish", value: "es" },
+            { label: "Swahili", value: "sw" },
+            { label: "Swedish", value: "sv" },
+            { label: "Tagalog", value: "tl" },
+            { label: "Thai", value: "th" },
+            { label: "Turkish", value: "tr" },
+            { label: "Ukrainian", value: "uk" },
+            { label: "Vietnamese", value: "vi" }
+        ],
+        []
+    );
+
+    const [languagePickerOpen, setLanguagePickerOpen] = useState(false);
 
     const {
         recordingQuality = "Standard",
@@ -67,7 +119,8 @@ export default function SettingsScreen({
         notifyErrors = true,
         theme = "System",
         language = "English",
-        forceDefaultLanguage = false
+        forceDefaultLanguage = false,
+        transcriptionLanguage = "auto"
     } = settings || {};
 
     const handleChange = (key, value) => {
@@ -216,19 +269,54 @@ export default function SettingsScreen({
 
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>Language</Text>
-                    <Text style={styles.sectionLabel}>Default language</Text>
-                    <TextInput
-                        value={language}
-                        onChangeText={(value) => handleChange("language", value)}
-                        style={styles.textInput}
-                        placeholder="English"
-                        placeholderTextColor="#94A3B8"
-                    />
-                    <SettingToggle
-                        label="Always transcribe and summarize in default language"
-                        value={forceDefaultLanguage}
-                        onValueChange={(value) => handleChange("forceDefaultLanguage", value)}
-                    />
+                    <Text style={styles.sectionLabel}>Transcription language (keeps transcript and summary in chosen language when not auto)</Text>
+                    <TouchableOpacity
+                        style={styles.dropdownTrigger}
+                        onPress={() => setLanguagePickerOpen(true)}
+                    >
+                        <Text style={styles.dropdownTriggerText}>
+                            {transcriptionLanguageOptions.find((o) => o.value === transcriptionLanguage)?.label ?? "Auto-detect"}
+                        </Text>
+                        <Ionicons name="chevron-down" size={18} color="#64748B" />
+                    </TouchableOpacity>
+                    <Modal
+                        visible={languagePickerOpen}
+                        transparent
+                        animationType="fade"
+                        onRequestClose={() => setLanguagePickerOpen(false)}
+                    >
+                        <Pressable style={styles.modalBackdrop} onPress={() => setLanguagePickerOpen(false)}>
+                            <Pressable style={styles.languageModalContent} onPress={() => {}}>
+                                <Text style={styles.languageModalTitle}>Select language</Text>
+                                <FlatList
+                                    data={transcriptionLanguageOptions}
+                                    keyExtractor={(item) => item.value}
+                                    renderItem={({ item }) => (
+                                        <TouchableOpacity
+                                            style={[
+                                                styles.languageOption,
+                                                item.value === transcriptionLanguage && styles.languageOptionActive
+                                            ]}
+                                            onPress={() => {
+                                                handleChange("transcriptionLanguage", item.value);
+                                                setLanguagePickerOpen(false);
+                                            }}
+                                        >
+                                            <Text
+                                                style={[
+                                                    styles.languageOptionText,
+                                                    item.value === transcriptionLanguage && styles.languageOptionTextActive
+                                                ]}
+                                            >
+                                                {item.label}
+                                            </Text>
+                                        </TouchableOpacity>
+                                    )}
+                                    style={styles.languageList}
+                                />
+                            </Pressable>
+                        </Pressable>
+                    </Modal>
                 </View>
             </ScrollView>
 
@@ -326,6 +414,61 @@ const styles = StyleSheet.create({
         fontWeight: "600"
     },
     optionTextActive: {
+        color: "#FFFFFF"
+    },
+    dropdownTrigger: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        paddingVertical: 12,
+        paddingHorizontal: 14,
+        backgroundColor: "#F1F5F9",
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: "#E2E8F0"
+    },
+    dropdownTriggerText: {
+        fontSize: 15,
+        color: "#334155",
+        fontWeight: "600"
+    },
+    modalBackdrop: {
+        flex: 1,
+        backgroundColor: "rgba(0,0,0,0.5)",
+        justifyContent: "center",
+        alignItems: "center",
+        padding: 24
+    },
+    languageModalContent: {
+        backgroundColor: "#FFFFFF",
+        borderRadius: 20,
+        padding: 20,
+        width: "100%",
+        maxHeight: "70%"
+    },
+    languageModalTitle: {
+        fontSize: 18,
+        fontWeight: "700",
+        color: "#1E293B",
+        marginBottom: 16
+    },
+    languageList: {
+        maxHeight: 400
+    },
+    languageOption: {
+        paddingVertical: 14,
+        paddingHorizontal: 12,
+        borderRadius: 10
+    },
+    languageOptionActive: {
+        backgroundColor: "#1D71B8"
+    },
+    languageOptionText: {
+        fontSize: 15,
+        color: "#334155",
+        fontWeight: "600"
+    },
+    languageOptionTextActive: {
         color: "#FFFFFF"
     },
     settingRow: {

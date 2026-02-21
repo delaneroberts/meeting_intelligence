@@ -195,7 +195,8 @@ Rules:
 - Preserve exact numbers and commitments verbatim (prices, dates, headcount, utilization, SLA, etc.).
 - If something is not discussed, leave arrays empty ([]) rather than adding filler.
 - Keep it concise and actionable.
-- Action items should only include explicit commitments or clearly assigned next steps.{agenda_instruction}
+- Action items should only include explicit commitments or clearly assigned next steps.
+- Write ALL output (title, summary_bullets, key_topics, decisions, action_items, risks_blockers, open_questions, notes_by_section) in {detected_language}.{agenda_instruction}
 
 Transcript:
 \"\"\"{transcript}\"\"\"
@@ -258,6 +259,7 @@ Transcript:
 Summarize the transcript in 5-10 bullet points (high signal, no fluff).
 Then list action items as '-' bullets in the format: "Action — Owner (Due: ...)".
 If none, write: None.
+Write the entire response in {detected_language}.
 
 Transcript:
 \"\"\"{transcript}\"\"\"

@@ -39,6 +39,29 @@ LANGUAGE_CODES = {
     'nl': 'Dutch',
     'sv': 'Swedish',
     'da': 'Danish',
+    'el': 'Greek',
+    'he': 'Hebrew',
+    'id': 'Indonesian',
+    'ms': 'Malay',
+    'no': 'Norwegian',
+    'nb': 'Norwegian Bokmål',
+    'nn': 'Norwegian Nynorsk',
+    'cs': 'Czech',
+    'hu': 'Hungarian',
+    'ro': 'Romanian',
+    'uk': 'Ukrainian',
+    'fi': 'Finnish',
+    'bg': 'Bulgarian',
+    'hr': 'Croatian',
+    'sk': 'Slovak',
+    'sl': 'Slovenian',
+    'sr': 'Serbian',
+    'et': 'Estonian',
+    'lv': 'Latvian',
+    'lt': 'Lithuanian',
+    'tl': 'Tagalog',
+    'fa': 'Persian',
+    'sw': 'Swahili',
 }
 
 
@@ -172,6 +195,42 @@ English translation:"""
     except OpenAIError as e:
         logger.exception("Translation API error: %s", e)
         raise
+
+
+def translate_with_forced_language(
+    text: str, language: str
+) -> tuple[str, str, bool]:
+    """
+    Use a preselected language without detection.
+    If not auto-detect: keep transcript in the chosen language (no translation).
+    Transcript and summary stay in that language.
+
+    Args:
+        text: Transcript text
+        language: "auto" | "en" | "es" | "English" | "Spanish" | etc.
+
+    Returns:
+        Tuple of (processed_text, language_name, was_translated)
+    """
+    if not text or not text.strip():
+        return text, "Unknown", False
+
+    lang = (language or "").strip().lower()
+    if not lang or lang == "auto":
+        raise ValueError("translate_with_forced_language requires non-auto language")
+
+    # Resolve to language name
+    language_name = LANGUAGE_CODES.get(lang)
+    if not language_name:
+        for code, name in LANGUAGE_CODES.items():
+            if lang == name.lower():
+                language_name = name
+                break
+    if not language_name:
+        language_name = language.strip()
+
+    logger.info("Forced language %s; keeping transcript in that language (no translation)", language_name)
+    return text, language_name, False
 
 
 def detect_and_translate_if_needed(text: str, source_language: str = "") -> tuple[str, str, bool]:

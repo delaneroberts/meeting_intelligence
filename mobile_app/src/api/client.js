@@ -35,7 +35,7 @@ export function getBaseUrl() {
  * @returns {Promise<{ status: number, job_id?: string, ...result }>}
  */
 export async function processAudio(options = {}) {
-    const { audioUri, jobId, agenda = "", userId = "1", signal } = options;
+    const { audioUri, jobId, agenda = "", userId = "1", signal, transcriptionLanguage = "auto" } = options;
     const base = getBaseUrl();
     if (!base) {
         throw new Error("Cannot reach server. Set apiBaseUrl in config.");
@@ -52,6 +52,7 @@ export async function processAudio(options = {}) {
     }
     formData.append("user_id", userId);
     if (agenda) formData.append("agenda", agenda);
+    if (transcriptionLanguage) formData.append("transcription_language", transcriptionLanguage);
 
     const response = await fetch(`${base}/api/process`, {
         method: "POST",

@@ -29,7 +29,8 @@ const DEFAULT_SETTINGS = {
     notifyErrors: true,
     theme: "System",
     language: "English",
-    forceDefaultLanguage: false
+    forceDefaultLanguage: false,
+    transcriptionLanguage: "auto"  // "auto" | "en" | "es" | "fr" | ...
 };
 
 export default function App() {

@@ -139,6 +139,7 @@ def process_audio():
 
         agenda = request.form.get("agenda", "").strip()
         job_id = request.form.get("progress_job_id", "").strip()
+        transcription_language = (request.form.get("transcription_language") or "").strip() or "auto"
         user_id = 1
         if "user_id" in request.form:
             try:
@@ -152,13 +153,13 @@ def process_audio():
             app = current_app._get_current_object()
             thread = threading.Thread(
                 target=run_process_job,
-                args=(job_id, save_path, filename, agenda, user_id, app),
+                args=(job_id, save_path, filename, agenda, user_id, app, transcription_language),
                 daemon=True,
             )
             thread.start()
             wait_for_completion = request.form.get("wait_for_completion", "").strip().lower() in ("1", "true", "yes")
             if wait_for_completion:
-                timeout_sec = 120
+                timeout_sec = 1800  # 30 min: first-time large-v3-turbo download (~1.6GB) + WhisperX on CPU
                 poll_interval = 0.5
                 elapsed = 0.0
                 while elapsed < timeout_sec:

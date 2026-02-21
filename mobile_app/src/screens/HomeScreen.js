@@ -187,10 +187,12 @@ export default function HomeScreen({
     const [isTranscribing, setIsTranscribing] = useState(false);
     const [transcriptProgressPercent, setTranscriptProgressPercent] = useState(0);
     const [transcriptProgressMessage, setTranscriptProgressMessage] = useState("");
+    const [transcriptElapsedSeconds, setTranscriptElapsedSeconds] = useState(0);
     const [showRenameModal, setShowRenameModal] = useState(false);
     const [renameInputValue, setRenameInputValue] = useState("");
     const transcriptAbortRef = useRef(null);
     const transcriptTimeoutRef = useRef(null);
+    const transcriptStartTimeRef = useRef(null);
     const swipeableRefs = useRef(new Map());
     const [audioLoading, setAudioLoading] = useState(false);
     const [isPlaying, setIsPlaying] = useState(false);
@@ -242,6 +244,17 @@ export default function HomeScreen({
     // }, []);
 
     const materialsLimits = appConfig.meetingMaterials;
+
+    useEffect(() => {
+        if (!isTranscribing) return;
+        const interval = setInterval(() => {
+            if (transcriptStartTimeRef.current) {
+                const elapsed = Math.floor((Date.now() - transcriptStartTimeRef.current) / 1000);
+                setTranscriptElapsedSeconds(elapsed);
+            }
+        }, 1000);
+        return () => clearInterval(interval);
+    }, [isTranscribing]);
 
     const meetingList = useMemo(() => {
         if (!libraryItems.length) {
@@ -830,13 +843,14 @@ export default function HomeScreen({
         }
         const controller = new AbortController();
         transcriptAbortRef.current = controller;
+        transcriptStartTimeRef.current = Date.now();
         setIsTranscribing(true);
         setTranscriptError("");
         let transcriptValue = "";
         let languageValue = "";
         let errorMessage = "";
         try {
-            transcriptTimeoutRef.current = setTimeout(() => controller.abort(), 15 * 60 * 1000);
+            transcriptTimeoutRef.current = setTimeout(() => controller.abort(), 35 * 60 * 1000); // 35 min: first-time model download can take ~20 min
             setTranscriptProgressPercent(0);
             setTranscriptProgressMessage("Starting…");
             await new Promise((resolve) => requestAnimationFrame(resolve));
@@ -849,7 +863,8 @@ export default function HomeScreen({
                 audioUri: item.recordingUri,
                 jobId,
                 userId: "1",
-                signal: controller.signal
+                signal: controller.signal,
+                transcriptionLanguage: settings?.transcriptionLanguage ?? "auto"
             }).catch((err) => {
                 onGlobalError?.(err?.message);
                 throw err;
@@ -982,10 +997,12 @@ export default function HomeScreen({
                 clearTimeout(transcriptTimeoutRef.current);
             }
             transcriptAbortRef.current = null;
+            transcriptStartTimeRef.current = null;
             setIsTranscribing(false);
             setShowTranscriptProgress(false);
             setTranscriptProgressPercent(0);
             setTranscriptProgressMessage("");
+            setTranscriptElapsedSeconds(0);
             if (showTranscriptModal) {
                 setShowTranscriptModal(true);
             }
@@ -1693,6 +1710,7 @@ export default function HomeScreen({
                         cancelLabel="Cancel"
                         progress={transcriptProgressPercent}
                         progressMessage={transcriptProgressMessage ? `${transcriptProgressMessage} ${Math.round(transcriptProgressPercent * 100)}%` : `${Math.round(transcriptProgressPercent * 100)}%`}
+                        elapsedSeconds={transcriptElapsedSeconds}
                     />
                 </View>
             </Modal>
@@ -1808,6 +1826,7 @@ export default function HomeScreen({
                         cancelLabel="Cancel"
                         progress={transcriptProgressPercent}
                         progressMessage={transcriptProgressMessage ? `${transcriptProgressMessage} ${Math.round(transcriptProgressPercent * 100)}%` : `${Math.round(transcriptProgressPercent * 100)}%`}
+                        elapsedSeconds={transcriptElapsedSeconds}
                     />
                 </View>
             </Modal>

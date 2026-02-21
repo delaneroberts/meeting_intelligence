@@ -19,7 +19,7 @@ const sendDebugLog = async (level, message, meta = {}) => {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ level, message, meta, ts: new Date().toISOString() }),
-        }).catch(() => {});
+        }).catch(() => { });
     } catch (e) {
         // ignore errors — this is best-effort telemetry for debugging
     }
@@ -99,7 +99,7 @@ export default function RecordingScreen({
                 // Log the current permission state so we can inspect it from server logs.
                 try {
                     sendDebugLog('info', 'record_permission_current', { current });
-                } catch (e) {}
+                } catch (e) { }
 
                 const isGranted = current.status === "granted" || current.granted === true;
                 const isDenied = current.status === "denied";
@@ -108,7 +108,7 @@ export default function RecordingScreen({
                     // Explicitly denied: instruct user to open Settings to enable the mic.
                     try {
                         sendDebugLog('warn', 'record_permission_denied', { current });
-                    } catch (e) {}
+                    } catch (e) { }
                     setErrorMessage("Microphone permission is required to record. Please enable it in Settings.");
                     setIsStartingRecording(false);
                     return;
@@ -120,12 +120,12 @@ export default function RecordingScreen({
                     if (effectCancelledRef.current) return;
                     try {
                         sendDebugLog('info', 'record_permission_request', { permissionResponse });
-                    } catch (e) {}
+                    } catch (e) { }
                     const granted = permissionResponse.granted === true || permissionResponse.status === "granted";
                     if (!granted) {
                         try {
                             sendDebugLog('warn', 'record_permission_request_denied', { permissionResponse });
-                        } catch (e) {}
+                        } catch (e) { }
                         setErrorMessage("Microphone permission is required to record. Please enable it in Settings.");
                         setIsStartingRecording(false);
                         return;
@@ -170,7 +170,7 @@ export default function RecordingScreen({
                 if (!effectCancelledRef.current) {
                     try {
                         sendDebugLog('error', 'recording_start_error', { message: error?.message || error });
-                    } catch (e) {}
+                    } catch (e) { }
                     setErrorMessage("Unable to start recording.");
                     setIsStartingRecording(false);
                 }

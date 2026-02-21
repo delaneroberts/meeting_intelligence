@@ -7,6 +7,7 @@ returns job_id and supports status polling.
 
 import logging
 import os
+import time
 from typing import Any, Callable
 
 from . import translation
@@ -89,10 +90,12 @@ def run_process_job(
     agenda: str,
     user_id: int,
     app,
+    transcription_language: str = "auto",
 ) -> None:
     """
     Run the full transcribe/translate/summarize pipeline and update JOB_PROGRESS.
     Must run inside Flask app context (for DB and config).
+    transcription_language: "auto" | "en" | "es" | ... ; when not "auto", skips detection.
     """
     def set_progress(status: str, progress: float, message: str, **extra: Any) -> None:
         JOB_PROGRESS[job_id] = {
@@ -105,7 +108,10 @@ def run_process_job(
         _persist_job_progress(job_id, JOB_PROGRESS[job_id])
 
     with app.app_context():
-        _run_impl(job_id, save_path, filename, agenda, user_id, set_progress, app)
+        _run_impl(
+            job_id, save_path, filename, agenda, user_id, set_progress, app,
+            transcription_language=transcription_language or "auto",
+        )
 
 
 def _run_impl(
@@ -116,12 +122,18 @@ def _run_impl(
     user_id: int,
     set_progress: Callable[..., None],
     app,
+    transcription_language: str = "auto",
 ) -> None:
     try:
+        t_run_start = time.perf_counter()
+
         set_progress("transcribing", 0.1, "Transcribing…")
         segments = None
+        t0 = time.perf_counter()
         # Prefer WhisperX (diarization + aligned timestamps) when available
         wx_result = whisperx_process_audio(save_path)
+        t_transcribe = time.perf_counter() - t0
+        logger.info("[TIMING] transcription: %.2fs", t_transcribe)
         if wx_result is not None:
             segments, source_language, transcript_text = wx_result
         else:
@@ -136,9 +148,18 @@ def _run_impl(
         original_transcript = transcript_text
 
         set_progress("translating", 0.35, "Translating…")
-        translate_result = translation.detect_and_translate_if_needed(
-            transcript_text, source_language
-        )
+        t0 = time.perf_counter()
+        lang_override = (transcription_language or "").strip().lower()
+        if lang_override and lang_override != "auto":
+            translate_result = translation.translate_with_forced_language(
+                transcript_text, transcription_language
+            )
+        else:
+            translate_result = translation.detect_and_translate_if_needed(
+                transcript_text, source_language
+            )
+        t_translate = time.perf_counter() - t0
+        logger.info("[TIMING] translation/detect: %.2fs", t_translate)
         if translate_result is None:
             set_progress(
                 "error", 0, "Translation returned no result.",
@@ -148,6 +169,7 @@ def _run_impl(
         translated_transcript, detected_language, was_translated = translate_result
 
         set_progress("summarizing", 0.6, "Generating summary…")
+        t0 = time.perf_counter()
         logger.info("Starting summarization (timeout 90s)")
         try:
             def _summarize_with_context():
@@ -174,6 +196,8 @@ def _run_impl(
                 error=str(e) or "Summarization failed."
             )
             return
+        t_summarize = time.perf_counter() - t0
+        logger.info("[TIMING] summarization: %.2fs", t_summarize)
         logger.info("Summarization finished")
         if summary_result is None:
             set_progress(
@@ -184,12 +208,17 @@ def _run_impl(
         summary, action_items, memo_json = summary_result
         original_summary = summary
         original_action_items = action_items
+        t_translate_back = 0.0
         if was_translated and detected_language and detected_language.lower() != "english":
+            t0 = time.perf_counter()
             original_summary, original_action_items = _translate_results_back(
                 summary, action_items, detected_language
             )
+            t_translate_back = time.perf_counter() - t0
+            logger.info("[TIMING] translate_results_back: %.2fs", t_translate_back)
 
         set_progress("saving", 0.9, "Saving…")
+        t0 = time.perf_counter()
         meeting_id = export.new_meeting_id()
         export.save_meeting_artifacts(
             meeting_id=meeting_id,
@@ -205,6 +234,14 @@ def _run_impl(
             os.remove(save_path)
         except Exception as e:
             logger.warning("Could not delete audio file: %s", e)
+        t_save = time.perf_counter() - t0
+        logger.info("[TIMING] save: %.2fs", t_save)
+
+        t_run_total = time.perf_counter() - t_run_start
+        logger.info(
+            "[TIMING] PIPELINE TOTAL: %.2fs | transcribe=%.2fs | translate=%.2fs | summarize=%.2fs | translate_back=%.2fs | save=%.2fs",
+            t_run_total, t_transcribe, t_translate, t_summarize, t_translate_back, t_save
+        )
 
         result = {
             "meeting_id": meeting_id,

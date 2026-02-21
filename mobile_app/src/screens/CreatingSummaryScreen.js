@@ -1,6 +1,13 @@
 import React, { useEffect, useRef } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, Animated } from "react-native";
 
+function formatElapsed(seconds) {
+    if (seconds == null || seconds < 0) return "";
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return m > 0 ? `${m}:${String(s).padStart(2, "0")}` : `0:${String(s).padStart(2, "0")}`;
+}
+
 export default function CreatingSummaryScreen({
     meetingName,
     onBack,
@@ -9,7 +16,8 @@ export default function CreatingSummaryScreen({
     helperText = "This usually takes under a minute.",
     cancelLabel = "Cancel",
     progress = null,
-    progressMessage = null
+    progressMessage = null,
+    elapsedSeconds = null
 }) {
     const progressAnim = useRef(new Animated.Value(0)).current;
     const hasServerProgress = typeof progress === "number" && progress >= 0;
@@ -54,6 +62,9 @@ export default function CreatingSummaryScreen({
                         <Animated.View style={[styles.progressBarFill, { width: progressWidthAnimated }]} />
                     )}
                 </View>
+                {typeof elapsedSeconds === "number" && elapsedSeconds >= 0 && (
+                    <Text style={styles.elapsedText}>Elapsed: {formatElapsed(elapsedSeconds)}</Text>
+                )}
                 {hasServerProgress && progressMessage ? (
                     <Text style={styles.progressMessage}>{progressMessage}</Text>
                 ) : (
@@ -115,6 +126,13 @@ const styles = StyleSheet.create({
         height: "100%",
         backgroundColor: "#1D71B8",
         borderRadius: 3
+    },
+    elapsedText: {
+        fontSize: 14,
+        color: "#6B7280",
+        fontWeight: "600",
+        textAlign: "center",
+        marginBottom: 6
     },
     progressMessage: {
         fontSize: 15,
