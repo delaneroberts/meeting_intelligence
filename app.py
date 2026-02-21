@@ -8,6 +8,14 @@ import re
 from datetime import datetime
 from io import BytesIO
 
+# Load .env from project root first so HF_TOKEN, OPENAI_API_KEY etc. are available
+try:
+    from dotenv import load_dotenv
+    from pathlib import Path
+    _proj_root = Path(__file__).resolve().parent
+    load_dotenv(str(_proj_root / ".env"))
+except ImportError:
+    pass
 
 from flask import Flask
 from backend.models import db

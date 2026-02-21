@@ -1,10 +1,29 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Modal, View, Text, StyleSheet, TouchableOpacity } from "react-native";
+import { Modal, View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Linking } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { Audio } from "expo-av";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Speech from "expo-speech";
 import CreatingSummaryScreen from "./CreatingSummaryScreen";
+import appConfig from "../config/appConfig";
+
+const ELAPSED_UPDATE_INTERVAL_MS = 500;
+
+// Lightweight debug helper that POSTs to the backend debug/log endpoint.
+// This mirrors other debug helpers in the repo and is safe to leave in for
+// temporary diagnostics in development builds.
+const sendDebugLog = async (level, message, meta = {}) => {
+    try {
+        const url = `${appConfig.apiBaseUrl || ""}/api/debug/log`;
+        fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ level, message, meta, ts: new Date().toISOString() }),
+        }).catch(() => {});
+    } catch (e) {
+        // ignore errors — this is best-effort telemetry for debugging
+    }
+};
 
 const QUALITY_PRESETS = {
     Standard: Audio.RecordingOptionsPresets.LOW_QUALITY,
@@ -29,9 +48,12 @@ export default function RecordingScreen({
 }) {
     const recordingRef = useRef(null);
     const toastTimeoutRef = useRef(null);
+    const effectCancelledRef = useRef(false);
+    const lastElapsedUpdateRef = useRef(0);
     const [elapsedMillis, setElapsedMillis] = useState(0);
     const [isRecording, setIsRecording] = useState(false);
     const [isPaused, setIsPaused] = useState(false);
+    const [isStartingRecording, setIsStartingRecording] = useState(false);
     const [savedUri, setSavedUri] = useState(null);
     const [errorMessage, setErrorMessage] = useState("");
     const [toastMessage, setToastMessage] = useState("");
@@ -64,24 +86,57 @@ export default function RecordingScreen({
         if (!hasConsent) {
             return;
         }
+        effectCancelledRef.current = false;
+        setIsStartingRecording(true);
+        setErrorMessage("");
+
         const startRecording = async () => {
             try {
-                const permissionResponse = await Audio.requestPermissionsAsync();
-                const permissionStatus = await Audio.getPermissionsAsync();
-                const isGranted =
-                    permissionResponse.granted === true ||
-                    permissionResponse.status === "granted" ||
-                    permissionStatus.granted === true ||
-                    permissionStatus.status === "granted";
-                if (!isGranted) {
-                    setErrorMessage("Microphone permission is required to record.");
+                // First check existing permission state so we don't repeatedly trigger
+                // the system prompt if the user previously denied access.
+                const current = await Audio.getPermissionsAsync();
+                if (effectCancelledRef.current) return;
+                // Log the current permission state so we can inspect it from server logs.
+                try {
+                    sendDebugLog('info', 'record_permission_current', { current });
+                } catch (e) {}
+
+                const isGranted = current.status === "granted" || current.granted === true;
+                const isDenied = current.status === "denied";
+
+                if (isDenied) {
+                    // Explicitly denied: instruct user to open Settings to enable the mic.
+                    try {
+                        sendDebugLog('warn', 'record_permission_denied', { current });
+                    } catch (e) {}
+                    setErrorMessage("Microphone permission is required to record. Please enable it in Settings.");
+                    setIsStartingRecording(false);
                     return;
+                }
+
+                // If already granted, skip request. Otherwise (undetermined or ambiguous) request it.
+                if (!isGranted) {
+                    const permissionResponse = await Audio.requestPermissionsAsync();
+                    if (effectCancelledRef.current) return;
+                    try {
+                        sendDebugLog('info', 'record_permission_request', { permissionResponse });
+                    } catch (e) {}
+                    const granted = permissionResponse.granted === true || permissionResponse.status === "granted";
+                    if (!granted) {
+                        try {
+                            sendDebugLog('warn', 'record_permission_request_denied', { permissionResponse });
+                        } catch (e) {}
+                        setErrorMessage("Microphone permission is required to record. Please enable it in Settings.");
+                        setIsStartingRecording(false);
+                        return;
+                    }
                 }
                 await Audio.setAudioModeAsync({
                     allowsRecordingIOS: true,
                     staysActiveInBackground: settings?.backgroundRecording ?? false,
                     playsInSilentModeIOS: true
                 });
+                if (effectCancelledRef.current) return;
                 if (settings?.announceRecordingInProgress) {
                     Speech.speak("Recording started.");
                 }
@@ -91,28 +146,47 @@ export default function RecordingScreen({
                         if (statusUpdate.isRecording) {
                             setIsRecording(true);
                             setIsPaused(false);
-                            setElapsedMillis(statusUpdate.durationMillis || 0);
+                            setIsStartingRecording(false);
+                            const now = Date.now();
+                            const duration = statusUpdate.durationMillis || 0;
+                            if (now - lastElapsedUpdateRef.current >= ELAPSED_UPDATE_INTERVAL_MS) {
+                                lastElapsedUpdateRef.current = now;
+                                setElapsedMillis(duration);
+                            }
                         } else if (statusUpdate.isDoneRecording) {
                             setIsRecording(false);
                         }
                     }
                 );
+                if (effectCancelledRef.current) {
+                    recording.stopAndUnloadAsync().catch(() => undefined);
+                    return;
+                }
                 recordingRef.current = recording;
                 setSavedUri(null);
                 setErrorMessage("");
+                setIsStartingRecording(false);
             } catch (error) {
-                setErrorMessage("Unable to start recording.");
+                if (!effectCancelledRef.current) {
+                    try {
+                        sendDebugLog('error', 'recording_start_error', { message: error?.message || error });
+                    } catch (e) {}
+                    setErrorMessage("Unable to start recording.");
+                    setIsStartingRecording(false);
+                }
             }
         };
 
         startRecording();
 
         return () => {
+            effectCancelledRef.current = true;
             const recording = recordingRef.current;
             if (recording) {
                 recording.stopAndUnloadAsync().catch(() => undefined);
             }
             recordingRef.current = null;
+            setIsStartingRecording(false);
         };
     }, [
         hasConsent,
@@ -374,22 +448,45 @@ export default function RecordingScreen({
             </View>
 
             <View style={styles.statusCard}>
-                <Text style={styles.statusTitle}>
-                    {savedUri
-                        ? "Recording saved"
-                        : errorMessage
-                            ? "Recording error"
-                            : isPaused
-                                ? "Recording paused"
-                                : "Recording in progress"}
-                </Text>
+                {isStartingRecording ? (
+                    <View style={styles.startingRow}>
+                        <ActivityIndicator size="small" color="#1D71B8" />
+                        <Text style={styles.statusTitle}>Starting recording…</Text>
+                    </View>
+                ) : (
+                    <Text style={styles.statusTitle}>
+                        {savedUri
+                            ? "Recording saved"
+                            : errorMessage
+                                ? "Recording error"
+                                : isPaused
+                                    ? "Recording paused"
+                                    : "Recording in progress"}
+                    </Text>
+                )}
                 <Text style={styles.statusSubtitle}>
                     {savedUri
                         ? "Saved to your device."
                         : errorMessage
                             ? errorMessage
-                            : "Speak naturally. We will capture key points."}
+                            : isStartingRecording
+                                ? "Requesting microphone access…"
+                                : "Speak naturally. We will capture key points."}
                 </Text>
+                {errorMessage && errorMessage.toLowerCase().includes("microphone permission") ? (
+                    <TouchableOpacity
+                        style={styles.settingsButton}
+                        onPress={() => {
+                            try {
+                                Linking.openSettings();
+                            } catch (e) {
+                                // ignore
+                            }
+                        }}
+                    >
+                        <Text style={styles.settingsButtonText}>Open Settings</Text>
+                    </TouchableOpacity>
+                ) : null}
             </View>
             <Text style={styles.localOnlyText}>
                 Recordings stay on your device unless you choose to export them.
@@ -400,7 +497,7 @@ export default function RecordingScreen({
                     style={styles.secondaryControl}
                     activeOpacity={0.85}
                     onPress={handleTogglePause}
-                    disabled={!isRecording && !isPaused}
+                    disabled={isStartingRecording || (!isRecording && !isPaused)}
                 >
                     <Ionicons name={isPaused ? "play" : "pause"} size={20} color="#1D71B8" />
                     <Text style={styles.secondaryText}>{isPaused ? "Resume" : "Pause"}</Text>
@@ -409,7 +506,7 @@ export default function RecordingScreen({
                     style={styles.primaryControl}
                     activeOpacity={0.85}
                     onPress={handleStop}
-                    disabled={!isRecording && !isPaused}
+                    disabled={isStartingRecording || (!isRecording && !isPaused)}
                 >
                     <Ionicons name="stop" size={20} color="#FFFFFF" />
                     <Text style={styles.primaryText}>Stop</Text>
@@ -522,6 +619,12 @@ const styles = StyleSheet.create({
         color: "#2D3748",
         marginBottom: 4
     },
+    startingRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 10,
+        marginBottom: 4
+    },
     statusSubtitle: {
         fontSize: 13,
         color: "#7A899C",
@@ -561,6 +664,18 @@ const styles = StyleSheet.create({
         fontSize: 15,
         fontWeight: "600",
         color: "#FFFFFF"
+    },
+    settingsButton: {
+        marginTop: 12,
+        alignSelf: 'center',
+        paddingHorizontal: 14,
+        paddingVertical: 8,
+        borderRadius: 12,
+        backgroundColor: '#1D71B8'
+    },
+    settingsButtonText: {
+        color: '#FFFFFF',
+        fontWeight: '700'
     },
     toast: {
         position: "absolute",

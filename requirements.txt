@@ -5,3 +5,7 @@ reportlab==4.4.9
 flask_sqlalchemy==3.1.1
 pytest==8.3.4
 alembic==1.13.3
+python-dotenv==1.0.1
+
+# WhisperX (transcription + diarization). Requires torch; set HF_TOKEN in .env for diarization.
+whisperx>=3.1.0

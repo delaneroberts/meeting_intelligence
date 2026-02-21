@@ -15,6 +15,9 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import Constants from "expo-constants";
+import { getBaseUrl, processAudio, getProcessStatus, translateContent } from "../api/client";
+import MeetingControls from "../components/MeetingControls";
+import UploadZone from "../components/UploadZone";
 // Use the legacy filesystem API so existing getInfoAsync/uploadAsync calls keep working
 // without migrating to the new File/Directory classes right now.
 import * as FileSystem from "expo-file-system/legacy";
@@ -145,6 +148,7 @@ export default function HomeScreen({
     onSettingsChange,
     openDetailRecordId,
     onDetailOpened,
+    onGlobalError,
     openLibraryRequestId,
     uploadSuccessRecordId
 }) {
@@ -183,6 +187,8 @@ export default function HomeScreen({
     const [isTranscribing, setIsTranscribing] = useState(false);
     const [transcriptProgressPercent, setTranscriptProgressPercent] = useState(0);
     const [transcriptProgressMessage, setTranscriptProgressMessage] = useState("");
+    const [showRenameModal, setShowRenameModal] = useState(false);
+    const [renameInputValue, setRenameInputValue] = useState("");
     const transcriptAbortRef = useRef(null);
     const transcriptTimeoutRef = useRef(null);
     const swipeableRefs = useRef(new Map());
@@ -193,55 +199,47 @@ export default function HomeScreen({
     const [sound, setSound] = useState(null);
     const [progressBarWidth, setProgressBarWidth] = useState(0);
 
-    // Heartbeat for detecting JS-thread liveness during freezes.
-    const [heartbeatCount, setHeartbeatCount] = useState(0);
-    const [lastHeartbeatAt, setLastHeartbeatAt] = useState(null);
-
-    // UI-thread heartbeat (native driver) to detect native/UI-thread freezes.
-    const uiPulse = useRef(new Animated.Value(0)).current;
-
-    const sendDebugLog = async (level, message, meta = {}) => {
-        try {
-            const url = `${appConfig.apiBaseUrl}/debug/log`;
-            fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ level, message, meta }),
-            }).catch(() => { });
-        } catch (e) {
-            // ignore
-        }
-    };
-
-    useEffect(() => {
-        let mounted = true;
-        let counter = 0;
-        const interval = setInterval(() => {
-            if (!mounted) return;
-            counter += 1;
-            setHeartbeatCount((c) => c + 1);
-            setLastHeartbeatAt(new Date().toISOString());
-            // occasionally mirror to server (every 10 ticks ~= 4s)
-            if (counter % 10 === 0) {
-                sendDebugLog('info', 'heartbeat', { count: counter, ts: new Date().toISOString() });
-            }
-        }, 400);
-
-        // Start a native-driven UI pulse animation. This uses useNativeDriver so it
-        // runs on the UI thread itself; if the UI thread is blocked the animation will stop.
-        const pulse = Animated.loop(
-            Animated.sequence([
-                Animated.timing(uiPulse, { toValue: 1, duration: 350, useNativeDriver: true }),
-                Animated.timing(uiPulse, { toValue: 0, duration: 350, useNativeDriver: true })
-            ])
-        );
-        pulse.start();
-        return () => {
-            mounted = false;
-            pulse.stop();
-            clearInterval(interval);
-        };
-    }, []);
+    // Debugging: heartbeat and UI-thread pulse (commented out for normal screen)
+    // const [heartbeatCount, setHeartbeatCount] = useState(0);
+    // const [lastHeartbeatAt, setLastHeartbeatAt] = useState(null);
+    // const uiPulse = useRef(new Animated.Value(0)).current;
+    // const sendDebugLog = async (level, message, meta = {}) => {
+    //     try {
+    //         const url = `${appConfig.apiBaseUrl}/debug/log`;
+    //         fetch(url, {
+    //             method: 'POST',
+    //             headers: { 'Content-Type': 'application/json' },
+    //             body: JSON.stringify({ level, message, meta }),
+    //         }).catch(() => { });
+    //     } catch (e) {
+    //         // ignore
+    //     }
+    // };
+    // useEffect(() => {
+    //     let mounted = true;
+    //     let counter = 0;
+    //     const interval = setInterval(() => {
+    //         if (!mounted) return;
+    //         counter += 1;
+    //         setHeartbeatCount((c) => c + 1);
+    //         setLastHeartbeatAt(new Date().toISOString());
+    //         if (counter % 10 === 0) {
+    //             sendDebugLog('info', 'heartbeat', { count: counter, ts: new Date().toISOString() });
+    //         }
+    //     }, 400);
+    //     const pulse = Animated.loop(
+    //         Animated.sequence([
+    //             Animated.timing(uiPulse, { toValue: 1, duration: 350, useNativeDriver: true }),
+    //             Animated.timing(uiPulse, { toValue: 0, duration: 350, useNativeDriver: true })
+    //         ])
+    //     );
+    //     pulse.start();
+    //     return () => {
+    //         mounted = false;
+    //         pulse.stop();
+    //         clearInterval(interval);
+    //     };
+    // }, []);
 
     const materialsLimits = appConfig.meetingMaterials;
 
@@ -289,7 +287,21 @@ export default function HomeScreen({
         setShowLibraryModal(false);
         setShowSettingsModal(false);
         onDetailOpened?.();
-    }, [openDetailRecordId, libraryItems, onDetailOpened]);
+
+        const shouldAutoTranscribe =
+            (settings?.autoTranscribe || settings?.autoSummary) &&
+            targetRecord.recordingUri &&
+            !targetRecord.transcript;
+        if (shouldAutoTranscribe) {
+            setShowLibraryDetail(false);
+            setShowTranscriptProgress(true);
+            setShowTranslateDropdown(false);
+            setTranscriptError("");
+            setTranscriptText("");
+            setTranscriptLanguage("");
+            transcribeRecording(targetRecord);
+        }
+    }, [openDetailRecordId, libraryItems, onDetailOpened, settings?.autoTranscribe, settings?.autoSummary]);
 
     useEffect(() => {
         if (!openLibraryRequestId) {
@@ -409,7 +421,33 @@ export default function HomeScreen({
         setSelectedLibraryItem(null);
         setShowTranslateDropdown(false);
         setShowSummaryTranslateDropdown(false);
+        setShowRenameModal(false);
         setShowLibraryModal(true);
+    };
+
+    const handleRenamePress = () => {
+        const name = selectedLibraryItem?.title || selectedLibraryItem?.meetingName || "";
+        setRenameInputValue(name);
+        setShowRenameModal(true);
+    };
+
+    const handleRenameSave = () => {
+        const trimmed = (renameInputValue || "").trim();
+        if (!trimmed || !selectedLibraryItem?.id) {
+            setShowRenameModal(false);
+            return;
+        }
+        onUpdateRecording?.(selectedLibraryItem.id, { meetingName: trimmed, title: trimmed });
+        setSelectedLibraryItem((current) =>
+            current && current.id === selectedLibraryItem.id
+                ? { ...current, meetingName: trimmed, title: trimmed }
+                : current
+        );
+        setShowRenameModal(false);
+    };
+
+    const handleRenameCancel = () => {
+        setShowRenameModal(false);
     };
 
     const handleDetailHomePress = () => {
@@ -659,8 +697,7 @@ export default function HomeScreen({
         if (!selectedLibraryItem?.summary || isSummaryTranslating) {
             return;
         }
-        const apiBaseUrl = resolveApiBaseUrl();
-        if (!apiBaseUrl) {
+        if (!getBaseUrl()) {
             setSummaryError(
                 "Cannot reach translation service. Set apiBaseUrl to your machine IP."
             );
@@ -669,20 +706,14 @@ export default function HomeScreen({
         setSummaryError("");
         setIsSummaryTranslating(true);
         try {
-            const response = await fetch(`${apiBaseUrl}/api/translate_content`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    summary: selectedLibraryItem.summary,
-                    transcript: selectedLibraryItem.summary,
-                    target_language: targetLanguage
-                })
+            const payload = await translateContent({
+                summary: selectedLibraryItem.summary,
+                transcript: selectedLibraryItem.summary,
+                target_language: targetLanguage
+            }).catch((err) => {
+                onGlobalError?.(err?.message);
+                throw err;
             });
-            const payload = await response.json();
-            if (!response.ok) {
-                const message = payload?.error || "Translation failed.";
-                throw new Error(message);
-            }
             const translatedSummary = payload?.translated_transcript || "";
             if (!translatedSummary) {
                 throw new Error("Translation returned an empty response.");
@@ -707,7 +738,9 @@ export default function HomeScreen({
                     : current
             );
         } catch (error) {
-            setSummaryError(error?.message || "Translation failed.");
+            const msg = error?.message || "Translation failed.";
+            setSummaryError(msg);
+            onGlobalError?.(msg);
         } finally {
             setIsSummaryTranslating(false);
         }
@@ -725,8 +758,7 @@ export default function HomeScreen({
         if (!selectedLibraryItem?.transcript || isTranslating) {
             return;
         }
-        const apiBaseUrl = resolveApiBaseUrl();
-        if (!apiBaseUrl) {
+        if (!getBaseUrl()) {
             setTranslateError(
                 "Cannot reach translation service. Set apiBaseUrl to your machine IP."
             );
@@ -735,17 +767,15 @@ export default function HomeScreen({
         setIsTranslating(true);
         setTranslateError("");
         try {
-            const response = await fetch(`${apiBaseUrl}/api/translate_content`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    summary: selectedLibraryItem.summary || selectedLibraryItem.transcript,
-                    transcript: selectedLibraryItem.transcript,
-                    target_language: targetLanguage
-                })
+            const payload = await translateContent({
+                summary: selectedLibraryItem.summary || selectedLibraryItem.transcript,
+                transcript: selectedLibraryItem.transcript,
+                target_language: targetLanguage
+            }).catch((err) => {
+                onGlobalError?.(err?.message);
+                throw err;
             });
-            const payload = await response.json();
-            if (!response.ok) {
+            if (!payload?.translated_transcript) {
                 const message = payload?.error || "Translation failed.";
                 throw new Error(message);
             }
@@ -771,25 +801,12 @@ export default function HomeScreen({
                     : current
             );
         } catch (error) {
-            setTranslateError(error?.message || "Translation failed.");
+            const msg = error?.message || "Translation failed.";
+            setTranslateError(msg);
+            onGlobalError?.(msg);
         } finally {
             setIsTranslating(false);
         }
-    };
-
-    const resolveApiBaseUrl = () => {
-        if (appConfig.apiBaseUrl && appConfig.apiBaseUrl !== "auto") {
-            return appConfig.apiBaseUrl;
-        }
-        const hostUri =
-            Constants.expoConfig?.hostUri ||
-            Constants.manifest?.hostUri ||
-            Constants.manifest?.debuggerHost;
-        if (!hostUri) {
-            return "";
-        }
-        const host = hostUri.split(":")[0];
-        return `http://${host}:8001`;
     };
 
     const transcribeRecording = async (item, options = {}) => {
@@ -806,14 +823,15 @@ export default function HomeScreen({
             fail("Recording not available for transcription.");
             return;
         }
-        const apiBaseUrl = resolveApiBaseUrl();
-        if (!apiBaseUrl) {
+        const baseUrl = getBaseUrl();
+        if (!baseUrl) {
             fail("Cannot reach transcription service. Set apiBaseUrl to your machine IP.");
             return;
         }
         const controller = new AbortController();
         transcriptAbortRef.current = controller;
         setIsTranscribing(true);
+        setTranscriptError("");
         let transcriptValue = "";
         let languageValue = "";
         let errorMessage = "";
@@ -826,36 +844,36 @@ export default function HomeScreen({
             await new Promise((resolve) => InteractionManager.runAfterInteractions(resolve));
             await new Promise((resolve) => requestAnimationFrame(resolve));
 
-            const uploadUrl = `${apiBaseUrl}/api/process`;
             const jobId = `job-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-            const formData = new FormData();
-            formData.append("audio_file", {
-                uri: item.recordingUri,
-                name: "audio.m4a",
-                type: "audio/m4a"
-            });
-            formData.append("progress_job_id", jobId);
-            formData.append("user_id", "1");
-
-            const uploadResponse = await fetch(uploadUrl, {
-                method: "POST",
-                body: formData,
+            const uploadResult = await processAudio({
+                audioUri: item.recordingUri,
+                jobId,
+                userId: "1",
                 signal: controller.signal
+            }).catch((err) => {
+                onGlobalError?.(err?.message);
+                throw err;
             });
-            const responseBody = await uploadResponse.json().catch(() => ({}));
 
-            if (uploadResponse.status === 202) {
-                const statusUrl = `${apiBaseUrl}/api/process/status/${jobId}`;
+            if (uploadResult.status === 202) {
                 const pollIntervalMs = 1500;
+                await new Promise((r) => setTimeout(r, 400));
                 while (true) {
                     if (controller.signal?.aborted) throw new Error("AbortError");
-                    const statusRes = await fetch(statusUrl, { signal: controller.signal });
-                    const data = await statusRes.json().catch(() => ({}));
+                    const data = await getProcessStatus(jobId, controller.signal).catch((err) => {
+                        onGlobalError?.(err?.message);
+                        throw err;
+                    });
                     setTranscriptProgressPercent(data.progress ?? 0);
                     setTranscriptProgressMessage(data.message ?? "");
                     if (data.status === "completed" && data.result) {
-                        transcriptValue = data.result.transcript ?? data.result.english_transcript ?? "";
-                        languageValue = data.result.original_language ?? "";
+                        setTranscriptError("");
+                        const res = data.result;
+                        transcriptValue = res.transcript ?? res.english_transcript ?? "";
+                        languageValue = res.original_language ?? "";
+                        const summaryValue = res.english_summary ?? res.summary ?? "";
+                        const summaryLang = res.original_language ?? "English";
+                        const actionItems = Array.isArray(res.english_action_items) ? res.english_action_items : (Array.isArray(res.action_items) ? res.action_items : []);
                         const createdAt = new Date().toISOString();
                         setTranscriptText(transcriptValue);
                         setTranscriptLanguage(languageValue);
@@ -867,6 +885,10 @@ export default function HomeScreen({
                             transcriptTranslatedText: "",
                             transcriptTranslatedLanguage: "",
                             transcriptTranslatedAt: "",
+                            summary: summaryValue,
+                            summaryLanguage: summaryLang,
+                            summaryUpdatedAt: createdAt,
+                            action_items: actionItems,
                             status: "saved"
                         });
                         setSelectedLibraryItem((current) =>
@@ -879,6 +901,10 @@ export default function HomeScreen({
                                     transcriptTranslatedText: "",
                                     transcriptTranslatedLanguage: "",
                                     transcriptTranslatedAt: "",
+                                    summary: summaryValue,
+                                    summaryLanguage: summaryLang,
+                                    summaryUpdatedAt: createdAt,
+                                    action_items: actionItems,
                                     status: "saved"
                                 }
                                 : current
@@ -891,9 +917,12 @@ export default function HomeScreen({
                     }
                     await new Promise((r) => setTimeout(r, pollIntervalMs));
                 }
-            } else if (uploadResponse.ok && uploadResponse.status === 200) {
-                transcriptValue = responseBody?.transcript ?? responseBody?.english_transcript ?? "";
-                languageValue = responseBody?.original_language ?? "";
+            } else if (uploadResult.status === 200) {
+                transcriptValue = uploadResult?.transcript ?? uploadResult?.english_transcript ?? "";
+                languageValue = uploadResult?.original_language ?? "";
+                const summaryValue = uploadResult?.english_summary ?? uploadResult?.summary ?? "";
+                const summaryLang = uploadResult?.original_language ?? "English";
+                const actionItems = uploadResult?.english_action_items ?? uploadResult?.action_items ?? [];
                 const createdAt = new Date().toISOString();
                 setTranscriptText(transcriptValue);
                 setTranscriptLanguage(languageValue);
@@ -905,6 +934,10 @@ export default function HomeScreen({
                     transcriptTranslatedText: "",
                     transcriptTranslatedLanguage: "",
                     transcriptTranslatedAt: "",
+                    summary: summaryValue,
+                    summaryLanguage: summaryLang,
+                    summaryUpdatedAt: createdAt,
+                    action_items: actionItems,
                     status: "saved"
                 });
                 setSelectedLibraryItem((current) =>
@@ -917,25 +950,33 @@ export default function HomeScreen({
                             transcriptTranslatedText: "",
                             transcriptTranslatedLanguage: "",
                             transcriptTranslatedAt: "",
+                            summary: summaryValue,
+                            summaryLanguage: summaryLang,
+                            summaryUpdatedAt: createdAt,
+                            action_items: actionItems,
                             status: "saved"
                         }
                         : current
                 );
                 onComplete?.({ transcriptValue, languageValue });
             } else {
-                throw new Error(responseBody?.error || "Transcription failed.");
+                throw new Error(uploadResult?.error || "Transcription failed.");
             }
         } catch (error) {
             errorMessage =
                 error?.name === "AbortError"
                     ? "Transcription cancelled."
                     : error?.message || "Transcription failed.";
-            if (error?.name === "AbortError") {
-                setTranscriptError("Transcription cancelled.");
-            } else {
-                setTranscriptError(error?.message || "Transcription failed.");
-            }
-            onError?.(errorMessage);
+            const msg = error?.name === "AbortError" ? "Transcription cancelled." : (error?.message || "Transcription failed.");
+            setTimeout(() => {
+                if (error?.name === "AbortError") {
+                    setTranscriptError("Transcription cancelled.");
+                } else {
+                    setTranscriptError(msg);
+                }
+                onGlobalError?.(errorMessage);
+                onError?.(errorMessage);
+            }, 0);
         } finally {
             if (transcriptTimeoutRef.current) {
                 clearTimeout(transcriptTimeoutRef.current);
@@ -1112,108 +1153,28 @@ export default function HomeScreen({
 
     return (
         <View style={styles.container}>
-            {/* Heartbeat overlay: shows JS-thread tick count and last timestamp */}
-            <View style={styles.heartbeatOverlay} pointerEvents="none">
+            {/* Debugging overlay and pulse - commented out */}
+            {/* <View style={styles.heartbeatOverlay} pointerEvents="none">
                 <Text style={styles.heartbeatText}>HB: {heartbeatCount}</Text>
                 <Text style={styles.heartbeatSub}>{lastHeartbeatAt ? lastHeartbeatAt.split('T')[1].split('Z')[0] : '-'}</Text>
             </View>
-            {/* UI-thread pulse (runs via native driver). If this stops while HB keeps incrementing,
-                the UI thread is blocked. */}
             <Animated.View
                 style={[
                     styles.uiPulse,
                     { opacity: uiPulse.interpolate({ inputRange: [0, 1], outputRange: [0.25, 1] }) }
                 ]}
                 pointerEvents="none"
-            />
+            /> */}
             {!showLibraryDetail && (
                 <>
-                    <View style={styles.content}>
-                        <View style={styles.brandBlock}>
-                            <View style={styles.logoContainer}>
-                                <Image
-                                    source={require("../../assets/alta-vista-logo.png")}
-                                    style={styles.logoImage}
-                                    resizeMode="cover"
-                                />
-                            </View>
-                            <Text style={styles.brandTitle}>Alta Vista</Text>
-                            <Text style={styles.brandSubtitle}>Meeting Intelligence</Text>
-                        </View>
-
-                        <Text style={styles.prompt}>What would you like to do?</Text>
-
-                        <View style={styles.buttonStack}>
-                            <TouchableOpacity
-                                activeOpacity={0.9}
-                                onPress={() => handleActionPress("record")}
-                            >
-                                <LinearGradient
-                                    colors={["#FF9A3D", "#F48B1F"]}
-                                    start={{ x: 0, y: 0 }}
-                                    end={{ x: 1, y: 1 }}
-                                    style={styles.primaryButton}
-                                >
-                                    <Ionicons name="mic" size={22} color="#FFFFFF" />
-                                    <Text style={styles.primaryButtonText}>Record Meeting</Text>
-                                </LinearGradient>
-                            </TouchableOpacity>
-
-                            <TouchableOpacity
-                                activeOpacity={0.9}
-                                onPress={() => handleActionPress("upload")}
-                            >
-                                <LinearGradient
-                                    colors={["#6BB6E5", "#4E8ECF"]}
-                                    start={{ x: 0, y: 0 }}
-                                    end={{ x: 1, y: 1 }}
-                                    style={styles.secondaryButton}
-                                >
-                                    <Ionicons name="cloud-upload" size={22} color="#FFFFFF" />
-                                    <Text style={styles.secondaryButtonText}>Upload Recording</Text>
-                                </LinearGradient>
-                            </TouchableOpacity>
-                        </View>
-
-                        <TouchableOpacity
-                            style={styles.agendaCard}
-                            activeOpacity={0.9}
-                            onPress={() => handleActionPress("agenda")}
-                        >
-                            <View style={styles.agendaLeft}>
-                                <View style={styles.agendaIcon}>
-                                    <Ionicons name="document-text-outline" size={20} color="#6BA3D3" />
-                                </View>
-                                <Text style={styles.agendaText}>Add Agenda</Text>
-                            </View>
-                            <Ionicons name="chevron-forward" size={18} color="#A0AEC0" />
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                            style={styles.agendaCard}
-                            activeOpacity={0.9}
-                            onPress={() => setShowMaterialsUpload(true)}
-                        >
-                            <View style={styles.agendaLeft}>
-                                <View style={styles.agendaIconAlt}>
-                                    <Ionicons name="folder-open" size={20} color="#6BA3D3" />
-                                </View>
-                                <Text style={styles.agendaText}>Add Meeting Materials</Text>
-                            </View>
-                            <Ionicons name="chevron-forward" size={18} color="#A0AEC0" />
-                        </TouchableOpacity>
-
-                        <View style={styles.meetingNameCard}>
-                            <Text style={styles.meetingNameLabel}>Meeting ID</Text>
-                            <TextInput
-                                value={meetingId}
-                                onChangeText={setMeetingId}
-                                placeholder="Untitled"
-                                placeholderTextColor="#A0AEC0"
-                                style={styles.meetingNameInput}
-                            />
-                        </View>
-                    </View>
+                    <UploadZone
+                        meetingId={meetingId}
+                        onMeetingIdChange={setMeetingId}
+                        onRecord={() => handleActionPress("record")}
+                        onUpload={() => handleActionPress("upload")}
+                        onAgenda={() => handleActionPress("agenda")}
+                        onMaterials={() => setShowMaterialsUpload(true)}
+                    />
 
                     <View style={styles.tabBar}>
                         <TouchableOpacity
@@ -1284,9 +1245,16 @@ export default function HomeScreen({
                                 <Ionicons name="close" size={18} color="#64748B" />
                             </TouchableOpacity>
                         </View>
-                        <Text style={styles.detailMeetingName}>
-                            {selectedLibraryItem?.title || selectedLibraryItem?.meetingName || "Untitled"}
-                        </Text>
+                        <TouchableOpacity
+                            style={styles.detailMeetingNameRow}
+                            onPress={handleRenamePress}
+                            activeOpacity={0.7}
+                        >
+                            <Text style={styles.detailMeetingName} numberOfLines={1}>
+                                {selectedLibraryItem?.title || selectedLibraryItem?.meetingName || "Untitled"}
+                            </Text>
+                            <Ionicons name="pencil" size={18} color="#1D71B8" style={styles.detailRenameIcon} />
+                        </TouchableOpacity>
                         {showUploadToast ? (
                             <View style={styles.uploadToast}>
                                 <Text style={styles.uploadToastText}>
@@ -1295,89 +1263,23 @@ export default function HomeScreen({
                             </View>
                         ) : null}
 
-                        <View style={styles.detailSection}>
-                            <View style={styles.detailSectionHeaderRow}>
-                                <View style={styles.detailSectionHeader}>
-                                    <View style={styles.detailIconBubble}>
-                                        <Ionicons name="mic" size={18} color="#1D71B8" />
-                                    </View>
-                                    <Text style={styles.detailSectionTitle}>Recording</Text>
-                                </View>
-                                <TouchableOpacity
-                                    style={styles.shareButton}
-                                    onPress={handleShareRecording}
-                                    disabled={!selectedLibraryItem?.recordingUri}
-                                >
-                                    <Ionicons name="share-outline" size={18} color="#1D71B8" />
-                                </TouchableOpacity>
-                            </View>
-                            <Text style={styles.detailSectionText}>
-                                {selectedLibraryItem?.recordingUri
-                                    ? `Recording length: ${formatTime(playbackDuration)}`
-                                    : "Recording not available"}
-                            </Text>
-                            <View style={styles.recordingControls}>
-                                <TouchableOpacity
-                                    style={styles.skipButton}
-                                    onPress={() => handleSeekBy(-15)}
-                                    disabled={!sound}
-                                >
-                                    <Ionicons name="play-skip-back" size={16} color="#1D71B8" />
-                                    <Text style={styles.skipButtonText}>15s</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                    style={styles.playButton}
-                                    onPress={handleTogglePlayback}
-                                    disabled={!selectedLibraryItem?.recordingUri || audioLoading}
-                                >
-                                    <Ionicons
-                                        name={isPlaying ? "pause" : "play"}
-                                        size={18}
-                                        color="#FFFFFF"
-                                    />
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                    style={styles.skipButton}
-                                    onPress={() => handleSeekBy(15)}
-                                    disabled={!sound}
-                                >
-                                    <Ionicons name="play-skip-forward" size={16} color="#1D71B8" />
-                                    <Text style={styles.skipButtonText}>15s</Text>
-                                </TouchableOpacity>
-                            </View>
-                            <View style={styles.recordingProgressRow}>
-                                <Text style={styles.recordingTimeText}>
-                                    {formatTime(playbackPosition)}
-                                </Text>
-                                <Pressable
-                                    style={styles.progressBar}
-                                    onLayout={({ nativeEvent }) =>
-                                        setProgressBarWidth(nativeEvent.layout.width)
-                                    }
-                                    onPress={({ nativeEvent }) => {
-                                        if (!progressBarWidth) {
-                                            return;
-                                        }
-                                        handleSeekTo(nativeEvent.locationX / progressBarWidth);
-                                    }}
-                                >
-                                    <View
-                                        style={[
-                                            styles.progressFill,
-                                            {
-                                                width: `${playbackDuration
-                                                    ? (playbackPosition / playbackDuration) * 100
-                                                    : 0
-                                                    }%`
-                                            }
-                                        ]}
-                                    />
-                                </Pressable>
-                                <Text style={styles.recordingTimeText}>
-                                    {formatTime(playbackDuration)}
-                                </Text>
-                            </View>
-                        </View>
+                        <MeetingControls
+                            recordingUri={selectedLibraryItem?.recordingUri}
+                            playbackDuration={playbackDuration}
+                            playbackPosition={playbackPosition}
+                            progressBarWidth={progressBarWidth}
+                            isPlaying={isPlaying}
+                            audioLoading={audioLoading}
+                            hasSound={!!sound}
+                            formatTime={formatTime}
+                            onShare={handleShareRecording}
+                            onSeekBy={handleSeekBy}
+                            onTogglePlayback={handleTogglePlayback}
+                            onSeekTo={handleSeekTo}
+                            onProgressBarLayout={({ nativeEvent }) =>
+                                setProgressBarWidth(nativeEvent.layout.width)
+                            }
+                        />
 
                         <TouchableOpacity
                             style={styles.detailSection}
@@ -1862,6 +1764,40 @@ export default function HomeScreen({
                 </View>
             </Modal>
 
+            <Modal animationType="fade" transparent visible={showRenameModal}>
+                <View style={styles.modalOverlay}>
+                    <View style={styles.renameCard}>
+                        <Text style={styles.renameTitle}>Rename recording</Text>
+                        <TextInput
+                            style={styles.renameInput}
+                            value={renameInputValue}
+                            onChangeText={setRenameInputValue}
+                            placeholder="Meeting name"
+                            placeholderTextColor="#94A3B8"
+                            autoCapitalize="words"
+                            autoCorrect={false}
+                            selectTextOnFocus
+                        />
+                        <View style={styles.renameActions}>
+                            <TouchableOpacity
+                                style={styles.renameCancelButton}
+                                onPress={handleRenameCancel}
+                                activeOpacity={0.85}
+                            >
+                                <Text style={styles.renameCancelText}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={styles.renameSaveButton}
+                                onPress={handleRenameSave}
+                                activeOpacity={0.85}
+                            >
+                                <Text style={styles.renameSaveText}>Save</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+
             <Modal animationType="fade" transparent visible={showTranscriptProgress}>
                 <View style={styles.progressOverlay}>
                     <CreatingSummaryScreen
@@ -1898,22 +1834,28 @@ export default function HomeScreen({
                                 </TouchableOpacity>
                             </View>
                         </View>
-                        <Text style={styles.transcriptHeading}>Transcript</Text>
-                        {transcriptLanguage ? (
-                            <Text style={styles.transcriptLanguage}>
-                                Language: {transcriptLanguage}
+                        <ScrollView
+                            style={styles.transcriptModalScroll}
+                            contentContainerStyle={styles.transcriptModalScrollContent}
+                            showsVerticalScrollIndicator={true}
+                        >
+                            <Text style={styles.transcriptHeading}>Transcript</Text>
+                            {transcriptLanguage ? (
+                                <Text style={styles.transcriptLanguage}>
+                                    Language: {transcriptLanguage}
+                                </Text>
+                            ) : null}
+                            <Text style={styles.transcriptBody}>
+                                {transcriptError
+                                    ? transcriptError
+                                    : transcriptText || "Transcript unavailable."}
                             </Text>
-                        ) : null}
-                        <Text style={styles.transcriptBody}>
-                            {transcriptError
-                                ? transcriptError
-                                : transcriptText || "Transcript unavailable."}
-                        </Text>
-                        {translatedLanguage ? (
-                            <Text style={styles.transcriptLanguage}>
-                                Translated to: {translatedLanguage}
-                            </Text>
-                        ) : null}
+                            {translatedLanguage ? (
+                                <Text style={styles.transcriptLanguage}>
+                                    Translated to: {translatedLanguage}
+                                </Text>
+                            ) : null}
+                        </ScrollView>
                     </View>
                 </View>
             </Modal>
@@ -1940,17 +1882,23 @@ export default function HomeScreen({
                                 </TouchableOpacity>
                             </View>
                         </View>
-                        <Text style={styles.transcriptHeading}>Summary</Text>
-                        {summaryTranslatedLanguage ? (
-                            <Text style={styles.transcriptLanguage}>
-                                Language: {summaryTranslatedLanguage}
+                        <ScrollView
+                            style={styles.transcriptModalScroll}
+                            contentContainerStyle={styles.transcriptModalScrollContent}
+                            showsVerticalScrollIndicator={true}
+                        >
+                            <Text style={styles.transcriptHeading}>Summary</Text>
+                            {summaryTranslatedLanguage ? (
+                                <Text style={styles.transcriptLanguage}>
+                                    Language: {summaryTranslatedLanguage}
+                                </Text>
+                            ) : null}
+                            <Text style={styles.transcriptBody}>
+                                {summaryError
+                                    ? summaryError
+                                    : summaryText || "Summary unavailable."}
                             </Text>
-                        ) : null}
-                        <Text style={styles.transcriptBody}>
-                            {summaryError
-                                ? summaryError
-                                : summaryText || "Summary unavailable."}
-                        </Text>
+                        </ScrollView>
                     </View>
                 </View>
             </Modal>
@@ -2191,6 +2139,7 @@ const styles = StyleSheet.create({
     transcriptCard: {
         width: "100%",
         maxWidth: 420,
+        maxHeight: "85%",
         backgroundColor: "#FFFFFF",
         borderRadius: 20,
         padding: 20,
@@ -2199,6 +2148,13 @@ const styles = StyleSheet.create({
         shadowOffset: { width: 0, height: 8 },
         shadowRadius: 16,
         elevation: 6
+    },
+    transcriptModalScroll: {
+        maxHeight: 400,
+        flexGrow: 0
+    },
+    transcriptModalScrollContent: {
+        paddingBottom: 24
     },
     summaryLengthCard: {
         width: "100%",
@@ -2275,6 +2231,62 @@ const styles = StyleSheet.create({
         fontSize: 13,
         color: "#1D71B8",
         fontWeight: "600"
+    },
+    renameCard: {
+        width: "100%",
+        maxWidth: 340,
+        backgroundColor: "#FFFFFF",
+        borderRadius: 20,
+        padding: 24,
+        shadowColor: "#000",
+        shadowOpacity: 0.1,
+        shadowOffset: { width: 0, height: 8 },
+        shadowRadius: 16,
+        elevation: 6
+    },
+    renameTitle: {
+        fontSize: 18,
+        fontWeight: "700",
+        color: "#1E293B",
+        marginBottom: 16
+    },
+    renameInput: {
+        borderWidth: 1,
+        borderColor: "#E2E8F0",
+        borderRadius: 12,
+        paddingVertical: 12,
+        paddingHorizontal: 16,
+        fontSize: 16,
+        color: "#1E293B",
+        marginBottom: 20,
+        backgroundColor: "#F8FAFC"
+    },
+    renameActions: {
+        flexDirection: "row",
+        justifyContent: "flex-end",
+        gap: 12
+    },
+    renameCancelButton: {
+        paddingVertical: 12,
+        paddingHorizontal: 20,
+        borderRadius: 12,
+        backgroundColor: "#F1F5F9"
+    },
+    renameCancelText: {
+        fontSize: 15,
+        fontWeight: "600",
+        color: "#64748B"
+    },
+    renameSaveButton: {
+        paddingVertical: 12,
+        paddingHorizontal: 20,
+        borderRadius: 12,
+        backgroundColor: "#1D71B8"
+    },
+    renameSaveText: {
+        fontSize: 15,
+        fontWeight: "600",
+        color: "#FFFFFF"
     },
     transcriptHeader: {
         flexDirection: "row",
@@ -2574,11 +2586,22 @@ const styles = StyleSheet.create({
         shadowRadius: 8,
         elevation: 4
     },
+    detailMeetingNameRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        marginBottom: 18,
+        gap: 8,
+        paddingVertical: 4,
+        paddingRight: 4
+    },
     detailMeetingName: {
+        flex: 1,
         fontSize: 18,
         fontWeight: "600",
-        color: "#1E293B",
-        marginBottom: 18
+        color: "#1E293B"
+    },
+    detailRenameIcon: {
+        marginLeft: 4
     },
     uploadToast: {
         marginBottom: 16,

@@ -7,14 +7,15 @@ Supports structured JSON output with fallback to plain text.
 
 import json
 import logging
-from openai import OpenAI
 
-from .openai_wrapper import call_with_timeout, OpenAIError, OpenAITimeoutError
+from .openai_wrapper import (
+    call_with_timeout,
+    get_client,
+    OpenAIError,
+    OpenAITimeoutError,
+)
 
 logger = logging.getLogger(__name__)
-
-# Initialize OpenAI client
-client = OpenAI()  # reads OPENAI_API_KEY from environment
 
 # Supported meeting types
 MEETING_TYPES = [
@@ -138,7 +139,7 @@ def summarize_and_extract_actions(
         user_id
     )
 
-    # --- Premium quota check and decrement ---
+    # --- Premium quota check and decrement (runs in current thread so Flask app context is available) ---
     try:
         from backend.models import User, db
         user = User.query.get(user_id)
@@ -147,12 +148,11 @@ def summarize_and_extract_actions(
         if user.is_premium:
             if user.premium_quota <= 0:
                 raise Exception("Premium quota exhausted. Please purchase more premium credits.")
-            # Decrement quota
             user.premium_quota -= 1
             db.session.commit()
-            logger.info(f"Decremented premium quota for user {user_id}. Remaining: {user.premium_quota}")
+            logger.info("Decremented premium quota for user %s. Remaining: %s", user_id, user.premium_quota)
     except Exception as e:
-        logger.error(f"Premium quota check failed: {e}")
+        logger.error("Premium quota check failed: %s", e)
         raise
 
     agenda_instruction = ""
@@ -206,7 +206,7 @@ Transcript:
         logger.debug("Attempting structured JSON summarization")
 
         def _call_structured():
-            return client.chat.completions.create(
+            return get_client().chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[
                     {"role": "system", "content": "You are precise and structured."},
@@ -265,7 +265,7 @@ Transcript:
 
     try:
         def _call_fallback():
-            return client.chat.completions.create(
+            return get_client().chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[{"role": "user", "content": fallback_prompt}],
                 temperature=0.2,

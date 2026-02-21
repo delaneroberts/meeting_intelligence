@@ -103,22 +103,20 @@ export default function AudioFileScreen({
         }
     };
 
-    const sendDebugLog = async (level, message, meta = {}) => {
-        try {
-            const url = `${appConfig.apiBaseUrl}/debug/log`;
-            // Fire-and-forget, don't let this block UI
-            fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ level, message, meta }),
-            }).catch((e) => {
-                // ignore network errors; still print locally
-                console.warn('[AudioFileScreen] sendDebugLog failed:', e?.message || e);
-            });
-        } catch (e) {
-            // ignore
-        }
-    };
+    // Debugging: commented out for normal operation
+    // const sendDebugLog = async (level, message, meta = {}) => {
+    //     try {
+    //         const url = `${appConfig.apiBaseUrl}/debug/log`;
+    //         fetch(url, {
+    //             method: 'POST',
+    //             headers: { 'Content-Type': 'application/json' },
+    //             body: JSON.stringify({ level, message, meta }),
+    //         }).catch(() => {});
+    //     } catch (e) {
+    //         // ignore
+    //     }
+    // };
+    const sendDebugLog = async () => {}; // no-op so existing call sites don't break
 
     const persistPickedFile = async (name, fileOverride = null) => {
         const file = fileOverride || pickedFile;
