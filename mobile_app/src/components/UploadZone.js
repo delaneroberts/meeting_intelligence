@@ -27,14 +27,16 @@ export default function UploadZone({
     return (
         <View style={styles.content}>
             <View style={styles.brandBlock}>
-                <View style={styles.logoContainer}>
-                    <Image
-                        source={require("../../assets/alta-vista-logo.png")}
-                        style={styles.logoImage}
-                        resizeMode="cover"
-                    />
+                <View style={styles.logoTitleRow}>
+                    <View style={styles.logoImageWrapper}>
+                        <Image
+                            source={require("../../assets/alta-vista-logo.png")}
+                            style={styles.logoImage}
+                            resizeMode="cover"
+                        />
+                    </View>
+                    <Text style={styles.brandTitle}>Alta Vista</Text>
                 </View>
-                <Text style={styles.brandTitle}>Alta Vista</Text>
                 <Text style={styles.brandSubtitle}>Meeting Intelligence</Text>
             </View>
             <Text style={styles.prompt}>What would you like to do?</Text>
@@ -103,12 +105,15 @@ const styles = StyleSheet.create({
         alignItems: "center",
         marginBottom: 28,
     },
-    logoContainer: {
-        width: 72,
-        height: 72,
-        borderRadius: 16,
+    logoTitleRow: {
+        alignItems: "center",
+        marginBottom: 4,
+    },
+    logoImageWrapper: {
+        width: 180,
+        height: 180,
+        marginBottom: 6,
         overflow: "hidden",
-        marginBottom: 12,
     },
     logoImage: {
         width: "100%",

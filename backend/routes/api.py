@@ -140,6 +140,7 @@ def process_audio():
         agenda = request.form.get("agenda", "").strip()
         job_id = request.form.get("progress_job_id", "").strip()
         transcription_language = (request.form.get("transcription_language") or "").strip() or "auto"
+        diarization = request.form.get("diarization", "1").strip().lower() in ("1", "true", "yes")
         user_id = 1
         if "user_id" in request.form:
             try:
@@ -153,7 +154,7 @@ def process_audio():
             app = current_app._get_current_object()
             thread = threading.Thread(
                 target=run_process_job,
-                args=(job_id, save_path, filename, agenda, user_id, app, transcription_language),
+                args=(job_id, save_path, filename, agenda, user_id, app, transcription_language, diarization),
                 daemon=True,
             )
             thread.start()

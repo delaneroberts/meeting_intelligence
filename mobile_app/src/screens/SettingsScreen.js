@@ -120,7 +120,8 @@ export default function SettingsScreen({
         theme = "System",
         language = "English",
         forceDefaultLanguage = false,
-        transcriptionLanguage = "auto"
+        transcriptionLanguage = "auto",
+        diarization = true
     } = settings || {};
 
     const handleChange = (key, value) => {
@@ -185,6 +186,12 @@ export default function SettingsScreen({
                         onValueChange={(value) =>
                             handleChange("promptSummaryLength", value)
                         }
+                    />
+                    <SettingToggle
+                        label="Diarization"
+                        value={diarization}
+                        onValueChange={(value) => handleChange("diarization", value)}
+                        description="increases processing time"
                     />
                     <Text style={styles.sectionLabel}>Preferred summary length</Text>
                     <OptionGroup

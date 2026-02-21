@@ -226,16 +226,18 @@ def _assign_word_speakers_optimized(
     return transcript_result
 
 
-def process_audio(file_path: str) -> tuple[list[dict[str, Any]], str, str] | None:
+def process_audio(file_path: str, diarization_enabled: bool = True) -> tuple[list[dict[str, Any]], str, str] | None:
     """
-    Transcribe audio with WhisperX, align for precise timestamps, and run speaker diarization.
+    Transcribe audio with WhisperX, align for precise timestamps.
+    Optionally run speaker diarization (when diarization_enabled=True).
 
     Uses device='mps' (Mac GPU) and compute_type='float16'. Requires HF_TOKEN in env
-    (or .env) for pyannote diarization models.
+    (or .env) for pyannote diarization models when diarization is enabled.
 
     Returns:
         (segments, language_code, full_text) or None on failure.
         Each segment: {"speaker": "SPEAKER_00", "start": 0.0, "end": 5.2, "text": "Hello world"}
+        When diarization_enabled=False, full_text is verbatim (plain concatenation, no speaker labels).
     """
     if not _WHISPERX_AVAILABLE:
         logger.error("WhisperX is not installed. Install with: pip install whisperx")
@@ -337,29 +339,35 @@ def process_audio(file_path: str) -> tuple[list[dict[str, Any]], str, str] | Non
             result["language"] = language
 
         # Diarization (requires HF_TOKEN; pyannote model may require Hugging Face agreement)
-        t0 = time.perf_counter()
-        logger.info("WhisperX diarizing...")
-        diarize_model = DiarizationPipeline(
-            model_name="pyannote/speaker-diarization-3.0",
-            token=hf_token,
-            device=device,
-        )
-        logger.info("[TIMING] DiarizationPipeline init: %.2fs", time.perf_counter() - t0)
-        t0 = time.perf_counter()
-        diarize_segments = diarize_model(
-            file_path,
-            min_speakers=None,
-            max_speakers=None,
-        )
-        logger.info("[TIMING] diarize_model() call: %.2fs", time.perf_counter() - t0)
-        t0 = time.perf_counter()
-        result = _assign_word_speakers_optimized(diarize_segments, result, fill_nearest=True)
-        logger.info("[TIMING] assign_word_speakers: %.2fs", time.perf_counter() - t0)
-        del diarize_model
-        gc.collect()
+        if diarization_enabled:
+            t0 = time.perf_counter()
+            logger.info("WhisperX diarizing...")
+            diarize_model = DiarizationPipeline(
+                model_name="pyannote/speaker-diarization-3.0",
+                token=hf_token,
+                device=device,
+            )
+            logger.info("[TIMING] DiarizationPipeline init: %.2fs", time.perf_counter() - t0)
+            t0 = time.perf_counter()
+            diarize_segments = diarize_model(
+                file_path,
+                min_speakers=None,
+                max_speakers=None,
+            )
+            logger.info("[TIMING] diarize_model() call: %.2fs", time.perf_counter() - t0)
+            t0 = time.perf_counter()
+            result = _assign_word_speakers_optimized(diarize_segments, result, fill_nearest=True)
+            logger.info("[TIMING] assign_word_speakers: %.2fs", time.perf_counter() - t0)
+            del diarize_model
+            gc.collect()
+        else:
+            logger.info("WhisperX skipping diarization (verbatim transcript)")
 
         segments = _segments_to_list(result)
-        full_text = transcript_with_speakers_from_segments(segments) or _full_text_from_segments(segments)
+        if diarization_enabled:
+            full_text = transcript_with_speakers_from_segments(segments) or _full_text_from_segments(segments)
+        else:
+            full_text = _full_text_from_segments(segments)
         lang_code = result.get("language", language) if isinstance(result.get("language"), str) else language
 
         t_pipeline_total = time.perf_counter() - t_pipeline_start

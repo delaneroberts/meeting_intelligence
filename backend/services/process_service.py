@@ -91,11 +91,13 @@ def run_process_job(
     user_id: int,
     app,
     transcription_language: str = "auto",
+    diarization: bool = True,
 ) -> None:
     """
     Run the full transcribe/translate/summarize pipeline and update JOB_PROGRESS.
     Must run inside Flask app context (for DB and config).
     transcription_language: "auto" | "en" | "es" | ... ; when not "auto", skips detection.
+    diarization: when False, skip speaker diarization and return verbatim transcript.
     """
     def set_progress(status: str, progress: float, message: str, **extra: Any) -> None:
         JOB_PROGRESS[job_id] = {
@@ -111,6 +113,7 @@ def run_process_job(
         _run_impl(
             job_id, save_path, filename, agenda, user_id, set_progress, app,
             transcription_language=transcription_language or "auto",
+            diarization=diarization,
         )
 
 
@@ -123,6 +126,7 @@ def _run_impl(
     set_progress: Callable[..., None],
     app,
     transcription_language: str = "auto",
+    diarization: bool = True,
 ) -> None:
     try:
         t_run_start = time.perf_counter()
@@ -130,8 +134,8 @@ def _run_impl(
         set_progress("transcribing", 0.1, "Transcribing…")
         segments = None
         t0 = time.perf_counter()
-        # Prefer WhisperX (diarization + aligned timestamps) when available
-        wx_result = whisperx_process_audio(save_path)
+        # Prefer WhisperX (optional diarization + aligned timestamps) when available
+        wx_result = whisperx_process_audio(save_path, diarization_enabled=diarization)
         t_transcribe = time.perf_counter() - t0
         logger.info("[TIMING] transcription: %.2fs", t_transcribe)
         if wx_result is not None:

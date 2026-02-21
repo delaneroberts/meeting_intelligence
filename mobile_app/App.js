@@ -5,6 +5,7 @@ import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { StatusBar } from "expo-status-bar";
 
 import { loadLibraryItems, saveLibraryItems } from "./src/storage/libraryStorage";
+import { loadSettings, saveSettings } from "./src/storage/settingsStorage";
 import HomeScreen from "./src/screens/HomeScreen";
 import RecordingScreen from "./src/screens/RecordingScreen";
 import CreatingSummaryScreen from "./src/screens/CreatingSummaryScreen";
@@ -30,7 +31,8 @@ const DEFAULT_SETTINGS = {
     theme: "System",
     language: "English",
     forceDefaultLanguage: false,
-    transcriptionLanguage: "auto"  // "auto" | "en" | "es" | "fr" | ...
+    transcriptionLanguage: "auto",  // "auto" | "en" | "es" | "fr" | ...
+    diarization: true,
 };
 
 export default function App() {
@@ -38,6 +40,7 @@ export default function App() {
     // const [touchProbeOn, setTouchProbeOn] = useState(false); // debugging
     const [libraryItems, setLibraryItems] = useState([]);
     const [settings, setSettings] = useState(DEFAULT_SETTINGS);
+    const [settingsLoaded, setSettingsLoaded] = useState(false);
     const [uploadMeetingName, setUploadMeetingName] = useState("");
     const [recordingMeetingName, setRecordingMeetingName] = useState("New Meeting");
     const [openDetailRecordId, setOpenDetailRecordId] = useState(null);
@@ -56,9 +59,27 @@ export default function App() {
     }, []);
 
     useEffect(() => {
+        loadSettings(DEFAULT_SETTINGS).then((loaded) => {
+            const merged = { ...DEFAULT_SETTINGS };
+            for (const key of Object.keys(loaded)) {
+                if (loaded[key] !== undefined && loaded[key] !== null) {
+                    merged[key] = loaded[key];
+                }
+            }
+            setSettings(merged);
+            setSettingsLoaded(true);
+        });
+    }, []);
+
+    useEffect(() => {
         if (!libraryLoadedRef.current) return;
         saveLibraryItems(libraryItems);
     }, [libraryItems]);
+
+    useEffect(() => {
+        if (!settingsLoaded) return;
+        saveSettings(settings);
+    }, [settings, settingsLoaded]);
 
     const addToLibrary = (record) => {
         if (record && record.id) {
@@ -191,7 +212,11 @@ export default function App() {
                 )}
 
                 {activeScreen === "settings" && (
-                    <SettingsScreen onBack={() => setActiveScreen("home")} />
+                    <SettingsScreen
+                        settings={settings}
+                        onSettingsChange={handleSettingsChange}
+                        onClose={() => setActiveScreen("home")}
+                    />
                 )}
 
                 {activeScreen === "audio" && (

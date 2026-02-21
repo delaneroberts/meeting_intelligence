@@ -95,6 +95,11 @@ logger = logging.getLogger(__name__)
 # Flask + OpenAI client
 # ----------------------------
 app.register_blueprint(api_blueprint)
+
+# Ensure DB tables exist (e.g. process_jobs for async job status polling)
+with app.app_context():
+    from backend.models import ProcessJob  # noqa: F401 - register model
+    db.create_all()
 # Debug: show what this process sees for the OPENAI_API_KEY (masked)
 try:
     _k = os.getenv("OPENAI_API_KEY")

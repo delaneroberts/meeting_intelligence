@@ -35,7 +35,7 @@ export function getBaseUrl() {
  * @returns {Promise<{ status: number, job_id?: string, ...result }>}
  */
 export async function processAudio(options = {}) {
-    const { audioUri, jobId, agenda = "", userId = "1", signal, transcriptionLanguage = "auto" } = options;
+    const { audioUri, jobId, agenda = "", userId = "1", signal, transcriptionLanguage = "auto", diarization = true, waitForCompletion = true } = options;
     const base = getBaseUrl();
     if (!base) {
         throw new Error("Cannot reach server. Set apiBaseUrl in config.");
@@ -48,11 +48,12 @@ export async function processAudio(options = {}) {
     });
     if (jobId) {
         formData.append("progress_job_id", jobId);
-        formData.append("wait_for_completion", "1");
+        formData.append("wait_for_completion", waitForCompletion ? "1" : "0");
     }
     formData.append("user_id", userId);
     if (agenda) formData.append("agenda", agenda);
     if (transcriptionLanguage) formData.append("transcription_language", transcriptionLanguage);
+    formData.append("diarization", diarization ? "1" : "0");
 
     const response = await fetch(`${base}/api/process`, {
         method: "POST",
@@ -71,28 +72,39 @@ export async function processAudio(options = {}) {
 }
 
 /**
- * Poll process job status.
+ * Poll process job status. Retries on 404 a few times (server may not have registered job yet).
  * @param {string} jobId
  * @param {AbortSignal} [signal]
+ * @param {{ retry404Count?: number }} [options]
  * @returns {Promise<{ status, progress, message, result?, error? }>}
  */
-export async function getProcessStatus(jobId, signal) {
+export async function getProcessStatus(jobId, signal, options = {}) {
+    const { retry404Count = 15 } = options;
     const base = getBaseUrl();
     if (!base) throw new Error("Cannot reach server. Set apiBaseUrl in config.");
-    const response = await fetch(`${base}/api/process/status/${jobId}`, {
-        signal,
-    }).catch((err) => {
-        if (err?.name === "AbortError") throw err;
-        throw new Error(err?.message || "Network error.");
-    });
-    const data = await response.json().catch(() => ({}));
-    if (response.status === 404) {
-        throw new Error(data?.message || "Job not found. The server may have restarted.");
+    const url = `${base}/api/process/status/${encodeURIComponent(jobId)}`;
+    let last404 = null;
+    for (let attempt = 0; attempt <= retry404Count; attempt++) {
+        const response = await fetch(url, { signal }).catch((err) => {
+            if (err?.name === "AbortError") throw err;
+            throw new Error(err?.message || "Network error.");
+        });
+        const data = await response.json().catch(() => ({}));
+        if (response.status === 404) {
+            last404 = new Error(data?.message || "Job not found. The server may have restarted.");
+            if (attempt < retry404Count) {
+                const delayMs = 1500 + attempt * 800;
+                await new Promise((r) => setTimeout(r, delayMs));
+                continue;
+            }
+            throw last404;
+        }
+        if (!response.ok) {
+            throw new Error(data?.error || `Status check failed (${response.status}).`);
+        }
+        return data;
     }
-    if (!response.ok) {
-        throw new Error(data?.error || `Status check failed (${response.status}).`);
-    }
-    return data;
+    throw last404;
 }
 
 /**

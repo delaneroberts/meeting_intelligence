@@ -2,11 +2,13 @@
 Meeting summarization and action item extraction service.
 
 Uses GPT-4o-mini to summarize transcripts and extract structured action items.
+Prompt instructions are loaded from Prompts/standard.txt when present.
 Supports structured JSON output with fallback to plain text.
 """
 
 import json
 import logging
+from pathlib import Path
 
 from .openai_wrapper import (
     call_with_timeout,
@@ -16,6 +18,21 @@ from .openai_wrapper import (
 )
 
 logger = logging.getLogger(__name__)
+
+# Project root (meeting_intelligence/) for Prompts/standard.txt
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+
+
+def _load_standard_prompt() -> str:
+    """Load prompt instructions from Prompts/standard.txt. Returns empty string if file missing."""
+    path = _PROJECT_ROOT / "Prompts" / "standard.txt"
+    try:
+        if path.is_file():
+            return path.read_text(encoding="utf-8").strip()
+    except Exception as e:
+        logger.warning("Could not load Prompts/standard.txt: %s", e)
+    return ""
+
 
 # Supported meeting types
 MEETING_TYPES = [
@@ -165,8 +182,13 @@ IMPORTANT: The meeting had the following agenda:
 When structuring your notes, organize them by agenda items. Any discussion that doesn't fit the agenda should be placed in sections labeled "Opening Conversation" or "Other".
 In the notes_by_section, use the agenda items as headings where applicable."""
 
+    standard_instructions = _load_standard_prompt()
+    if standard_instructions:
+        logger.info("Using prompt from Prompts/standard.txt (%d chars)", len(standard_instructions))
+
     prompt_text = f"""
 You are an enterprise meeting assistant.
+{chr(10) + standard_instructions + chr(10) if standard_instructions else ""}
 
 Step 1: Identify meeting type.
 Choose ONE meeting_type from:
@@ -255,7 +277,17 @@ Transcript:
 
     # --- Fallback: plain text (always works) ---
     logger.debug("Using fallback plain text summarization")
-    fallback_prompt = f"""
+    fallback_instructions = _load_standard_prompt()
+    if fallback_instructions:
+        fallback_prompt = f"""{fallback_instructions}
+
+Write the entire response in {detected_language}.
+
+Transcript:
+\"\"\"{transcript}\"\"\"
+""".strip()
+    else:
+        fallback_prompt = f"""
 Summarize the transcript in 5-10 bullet points (high signal, no fluff).
 Then list action items as '-' bullets in the format: "Action — Owner (Due: ...)".
 If none, write: None.
