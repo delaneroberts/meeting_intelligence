@@ -179,4 +179,33 @@ class ProcessJob(db.Model):
         return d
 
 
-__all__ = ['db', 'User', 'Meeting', 'Setting', 'ExportHistory', 'ProcessJob']
+class MeetingTemplate(db.Model):
+    """Store custom meeting summary templates (prompt text)."""
+    __tablename__ = 'meeting_templates'
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(200), unique=True, nullable=False)
+    prompt_text = db.Column(db.Text, nullable=False)
+    is_default = db.Column(db.Boolean, default=False, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    def to_dict(self):
+        """Full representation including prompt_text (for GET by id / editing)."""
+        return {
+            'id': self.id,
+            'name': self.name,
+            'prompt_text': self.prompt_text,
+            'is_default': self.is_default,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+        }
+
+    def to_list_item(self):
+        """List representation: id, name, is_default only."""
+        return {
+            'id': self.id,
+            'name': self.name,
+            'is_default': self.is_default,
+        }
+
+
+__all__ = ['db', 'User', 'Meeting', 'Setting', 'ExportHistory', 'ProcessJob', 'MeetingTemplate']

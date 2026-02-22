@@ -92,12 +92,14 @@ def run_process_job(
     app,
     transcription_language: str = "auto",
     diarization: bool = True,
+    template_id: int | None = None,
 ) -> None:
     """
     Run the full transcribe/translate/summarize pipeline and update JOB_PROGRESS.
     Must run inside Flask app context (for DB and config).
     transcription_language: "auto" | "en" | "es" | ... ; when not "auto", skips detection.
     diarization: when False, skip speaker diarization and return verbatim transcript.
+    template_id: optional MeetingTemplate id; when set, use its prompt_text for summarization.
     """
     def set_progress(status: str, progress: float, message: str, **extra: Any) -> None:
         JOB_PROGRESS[job_id] = {
@@ -114,6 +116,7 @@ def run_process_job(
             job_id, save_path, filename, agenda, user_id, set_progress, app,
             transcription_language=transcription_language or "auto",
             diarization=diarization,
+            template_id=template_id,
         )
 
 
@@ -127,6 +130,7 @@ def _run_impl(
     app,
     transcription_language: str = "auto",
     diarization: bool = True,
+    template_id: int | None = None,
 ) -> None:
     try:
         t_run_start = time.perf_counter()
@@ -172,6 +176,16 @@ def _run_impl(
             return
         translated_transcript, detected_language, was_translated = translate_result
 
+        prompt_override = None
+        if template_id is not None:
+            from backend.models import MeetingTemplate
+            tpl = MeetingTemplate.query.get(template_id)
+            if tpl:
+                prompt_override = tpl.prompt_text
+                logger.info("Using template id=%s (%s) for summarization", template_id, tpl.name)
+            else:
+                logger.warning("Template id=%s not found; using default prompt", template_id)
+
         set_progress("summarizing", 0.6, "Generating summary…")
         t0 = time.perf_counter()
         logger.info("Starting summarization (timeout 90s)")
@@ -179,7 +193,8 @@ def _run_impl(
             def _summarize_with_context():
                 with app.app_context():
                     return summarize(
-                        translated_transcript, agenda, detected_language, user_id=user_id
+                        translated_transcript, agenda, detected_language, user_id=user_id,
+                        prompt_override=prompt_override,
                     )
             summary_result = call_with_timeout(
                 _summarize_with_context,

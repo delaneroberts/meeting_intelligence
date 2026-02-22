@@ -12,6 +12,9 @@ Endpoints:
 - POST /api/discard/<meeting_id>
 - POST /api/detect_questions
 - POST /api/translate_content
+- GET  /api/templates (list: id, name, is_default)
+- GET  /api/templates/<id> (full template for editing)
+- POST /api/templates (create), PUT /api/templates/<id> (update), DELETE /api/templates/<id>
 - GET  /api/settings, PUT /api/settings
 - POST /api/open_transcripts
 - POST /api/debug/log
@@ -36,7 +39,7 @@ from ..services.process_service import (
     translate_results_back,
 )
 from ..services.openai_wrapper import OpenAIError, OpenAITimeoutError
-from ..models import Setting
+from ..models import Setting, MeetingTemplate
 from ..config import UPLOAD_FOLDER, TRANSCRIPT_FOLDER, LOG_FOLDER, MAX_FILE_AGE_SECONDS
 
 logger = logging.getLogger(__name__)
@@ -141,6 +144,12 @@ def process_audio():
         job_id = request.form.get("progress_job_id", "").strip()
         transcription_language = (request.form.get("transcription_language") or "").strip() or "auto"
         diarization = request.form.get("diarization", "1").strip().lower() in ("1", "true", "yes")
+        template_id = None
+        if "template_id" in request.form and request.form["template_id"].strip():
+            try:
+                template_id = int(request.form["template_id"].strip())
+            except (TypeError, ValueError):
+                pass
         user_id = 1
         if "user_id" in request.form:
             try:
@@ -154,7 +163,7 @@ def process_audio():
             app = current_app._get_current_object()
             thread = threading.Thread(
                 target=run_process_job,
-                args=(job_id, save_path, filename, agenda, user_id, app, transcription_language, diarization),
+                args=(job_id, save_path, filename, agenda, user_id, app, transcription_language, diarization, template_id),
                 daemon=True,
             )
             thread.start()
@@ -203,8 +212,17 @@ def process_audio():
             return _error_response("Translation returned no result.", 502)
         translated_transcript, detected_language, was_translated = translate_result
 
+        prompt_override = None
+        if template_id is not None:
+            tpl = MeetingTemplate.query.get(template_id)
+            if tpl:
+                prompt_override = tpl.prompt_text
+            else:
+                logger.warning("Template id=%s not found; using default prompt", template_id)
+
         summary_result = summarize(
-            translated_transcript, agenda, detected_language, user_id=user_id
+            translated_transcript, agenda, detected_language, user_id=user_id,
+            prompt_override=prompt_override,
         )
         if summary_result is None:
             summary_result = ("", [], {})
@@ -318,6 +336,109 @@ def detect_questions():
     except Exception as e:
         logger.exception("Question detection error: %s", e)
         return jsonify({"questions": [], "error": str(e)}), 500
+
+
+# ---------------------------------------------------------------------------
+# Templates
+# ---------------------------------------------------------------------------
+
+
+@api.route("/templates", methods=["GET"])
+def list_templates():
+    """Return list of all templates: id, name, is_default (no prompt_text)."""
+    try:
+        templates = MeetingTemplate.query.order_by(MeetingTemplate.id).all()
+        templates_list = [t.to_list_item() for t in templates]
+        print(f"Found {len(templates)} templates in DB")
+        return jsonify({"templates": templates_list}), 200
+    except Exception as e:
+        logger.exception("Templates list error: %s", e)
+        return _error_response(str(e), 500)
+
+
+@api.route("/templates/<int:template_id>", methods=["GET"])
+def get_template(template_id):
+    """Return full template including prompt_text for editing."""
+    try:
+        tpl = MeetingTemplate.query.get(template_id)
+        if not tpl:
+            return _error_response("Template not found.", 404)
+        return jsonify(tpl.to_dict()), 200
+    except Exception as e:
+        logger.exception("Get template error: %s", e)
+        return _error_response(str(e), 500)
+
+
+@api.route("/templates", methods=["POST"])
+def create_template():
+    """Create a new custom template. Request JSON: name, prompt_text [, is_default=False]."""
+    try:
+        data = request.get_json(silent=True) or {}
+        name = (data.get("name") or "").strip()
+        prompt_text = data.get("prompt_text")
+        if not name:
+            return _error_response("name is required.", 400)
+        if prompt_text is None:
+            return _error_response("prompt_text is required.", 400)
+        if MeetingTemplate.query.filter_by(name=name).first():
+            return _error_response("A template with this name already exists.", 409)
+        is_default = bool(data.get("is_default", False))
+        tpl = MeetingTemplate(name=name, prompt_text=prompt_text, is_default=is_default)
+        from ..models import db
+        db.session.add(tpl)
+        db.session.commit()
+        return jsonify(tpl.to_dict()), 201
+    except Exception as e:
+        logger.exception("Create template error: %s", e)
+        return _error_response(str(e), 500)
+
+
+@api.route("/templates/<int:template_id>", methods=["PUT"])
+def update_template(template_id):
+    """Update a template. Cannot edit or set is_default on the Standard template (403)."""
+    try:
+        tpl = MeetingTemplate.query.get(template_id)
+        if not tpl:
+            return _error_response("Template not found.", 404)
+        if tpl.is_default:
+            return _error_response("The default (Standard) template cannot be edited.", 403)
+        data = request.get_json(silent=True) or {}
+        if "name" in data:
+            name = (data["name"] or "").strip()
+            if not name:
+                return _error_response("name cannot be empty.", 400)
+            other = MeetingTemplate.query.filter_by(name=name).first()
+            if other and other.id != template_id:
+                return _error_response("A template with this name already exists.", 409)
+            tpl.name = name
+        if "prompt_text" in data:
+            tpl.prompt_text = data["prompt_text"]
+        if "is_default" in data:
+            return _error_response("Cannot change is_default via update.", 400)
+        from ..models import db
+        db.session.commit()
+        return jsonify(tpl.to_dict()), 200
+    except Exception as e:
+        logger.exception("Update template error: %s", e)
+        return _error_response(str(e), 500)
+
+
+@api.route("/templates/<int:template_id>", methods=["DELETE"])
+def delete_template(template_id):
+    """Delete a template. Cannot delete the default (Standard) template (403)."""
+    try:
+        tpl = MeetingTemplate.query.get(template_id)
+        if not tpl:
+            return _error_response("Template not found.", 404)
+        if tpl.is_default:
+            return _error_response("The default (Standard) template cannot be deleted.", 403)
+        from ..models import db
+        db.session.delete(tpl)
+        db.session.commit()
+        return jsonify({"status": "deleted", "id": template_id}), 200
+    except Exception as e:
+        logger.exception("Delete template error: %s", e)
+        return _error_response(str(e), 500)
 
 
 # ---------------------------------------------------------------------------

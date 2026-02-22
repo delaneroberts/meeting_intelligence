@@ -123,7 +123,8 @@ def summarize_and_extract_actions(
     transcript: str,
     agenda: str = "",
     detected_language: str = "English",
-    user_id: int = 1
+    user_id: int = 1,
+    prompt_override: str | None = None,
 ) -> tuple[str, list[str], dict]:
     """
     Summarize a meeting transcript and extract action items.
@@ -182,9 +183,16 @@ IMPORTANT: The meeting had the following agenda:
 When structuring your notes, organize them by agenda items. Any discussion that doesn't fit the agenda should be placed in sections labeled "Opening Conversation" or "Other".
 In the notes_by_section, use the agenda items as headings where applicable."""
 
-    standard_instructions = _load_standard_prompt()
+    standard_instructions = (
+        (prompt_override or "").strip()
+        or _load_standard_prompt()
+    )
     if standard_instructions:
-        logger.info("Using prompt from Prompts/standard.txt (%d chars)", len(standard_instructions))
+        logger.info(
+            "Using prompt (%d chars) from %s",
+            len(standard_instructions),
+            "template override" if prompt_override else "Prompts/standard.txt",
+        )
 
     prompt_text = f"""
 You are an enterprise meeting assistant.

@@ -17,7 +17,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import Constants from "expo-constants";
-import { getBaseUrl, processAudio, getProcessStatus, translateContent } from "../api/client";
+import { getBaseUrl, processAudio, getProcessStatus, translateContent, getTemplates, createTemplate } from "../api/client";
 import MeetingControls from "../components/MeetingControls";
 import UploadZone from "../components/UploadZone";
 // Use the legacy filesystem API so existing getInfoAsync/uploadAsync calls keep working
@@ -191,6 +191,16 @@ export default function HomeScreen({
     const [transcribingJobs, setTranscribingJobs] = useState({}); // itemId -> { jobId, startTime }
     const transcribingJobsRef = useRef({});
     const [showProcessingCompleteToast, setShowProcessingCompleteToast] = useState(false);
+    const [showMeetingTypeModal, setShowMeetingTypeModal] = useState(false);
+    const [templates, setTemplates] = useState([]);
+    const [templatesLoading, setTemplatesLoading] = useState(false);
+    const [templatesError, setTemplatesError] = useState("");
+    const [selectedTemplateId, setSelectedTemplateId] = useState(null); // number = template id, 'new' = + Create New Template
+    const [showTemplateEditor, setShowTemplateEditor] = useState(false);
+    const [editorTemplateName, setEditorTemplateName] = useState("");
+    const [editorTemplatePrompt, setEditorTemplatePrompt] = useState("");
+    const [editorSaving, setEditorSaving] = useState(false);
+    const [editorError, setEditorError] = useState("");
     const [showRenameModal, setShowRenameModal] = useState(false);
     const [renameInputValue, setRenameInputValue] = useState("");
     const transcriptAbortRef = useRef(null);
@@ -534,13 +544,86 @@ export default function HomeScreen({
         if (!selectedLibraryItem) {
             return;
         }
+        setSummaryError("");
+        setShowMeetingTypeModal(true);
+    };
+
+    const loadTemplates = async () => {
+        setTemplatesLoading(true);
+        setTemplatesError("");
+        try {
+            const data = await getTemplates();
+            const list = data?.templates ?? [];
+            setTemplates(list);
+            // Default selection: Standard (by name or is_default), else first template, else 'new'
+            const standard = list.find((t) => t.name === "Standard" || t.is_default);
+            setSelectedTemplateId(standard ? standard.id : (list[0]?.id ?? "new"));
+        } catch (e) {
+            setTemplatesError(e?.message || "Failed to load templates.");
+            setTemplates([]);
+        } finally {
+            setTemplatesLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        if (showMeetingTypeModal) {
+            loadTemplates();
+        }
+    }, [showMeetingTypeModal]);
+
+    const handleOpenEditor = () => {
+        setShowMeetingTypeModal(false);
+        setEditorTemplateName("");
+        setEditorTemplatePrompt("");
+        setEditorError("");
+        setShowTemplateEditor(true);
+    };
+
+    const handleCloseTemplateEditor = () => {
+        setShowTemplateEditor(false);
+        setEditorError("");
+    };
+
+    const handleSaveNewTemplate = async () => {
+        const name = editorTemplateName.trim();
+        if (!name) {
+            setEditorError("Template name is required.");
+            return;
+        }
+        setEditorSaving(true);
+        setEditorError("");
+        try {
+            await createTemplate({ name, prompt_text: editorTemplatePrompt.trim() });
+            handleCloseTemplateEditor();
+            loadTemplates();
+        } catch (e) {
+            setEditorError(e?.message || "Failed to save template.");
+        } finally {
+            setEditorSaving(false);
+        }
+    };
+
+    const handleMeetingTypeConfirm = () => {
+        if (!selectedLibraryItem) {
+            setShowMeetingTypeModal(false);
+            return;
+        }
+        setShowMeetingTypeModal(false);
+        // "+ Create New Template" → open editor
+        if (selectedTemplateId === "new" || selectedTemplateId == null) {
+            handleOpenEditor();
+            return;
+        }
+        // Numeric template ID → run summary with that template
+        const templateId = selectedTemplateId;
         const defaultLength = settings?.summaryLength || "Medium";
         const shouldPrompt = settings?.promptSummaryLength !== false;
         setSelectedSummaryLength(defaultLength);
-        setSummaryError("");
         setRememberSummaryLength(false);
         if (!selectedLibraryItem?.transcript) {
             transcribeRecording(selectedLibraryItem, {
+                templateId,
                 showTranscriptModal: false,
                 onComplete: ({ transcriptValue }) => {
                     if (!shouldPrompt) {
@@ -564,7 +647,16 @@ export default function HomeScreen({
             });
             return;
         }
-        setShowSummaryLengthModal(true);
+        transcribeRecording(selectedLibraryItem, {
+            templateId,
+            showTranscriptModal: false,
+            onComplete: () => setShowSummaryLengthModal(true),
+            onError: (message) => setSummaryError(message || "Transcription failed.")
+        });
+    };
+
+    const handleMeetingTypeCancel = () => {
+        setShowMeetingTypeModal(false);
     };
 
     const handleTranscriptAction = () => {
@@ -819,7 +911,7 @@ export default function HomeScreen({
     };
 
     const transcribeRecording = async (item, options = {}) => {
-        const { onComplete, onError, showTranscriptModal = true } = options;
+        const { onComplete, onError, showTranscriptModal = true, templateId } = options;
         const fail = (message) => {
             setTranscriptError(message);
             setTranscribingJobs((prev) => {
@@ -858,7 +950,8 @@ export default function HomeScreen({
                 signal: controller.signal,
                 transcriptionLanguage: settings?.transcriptionLanguage ?? "auto",
                 diarization: settings?.diarization ?? true,
-                waitForCompletion: true
+                waitForCompletion: true,
+                templateId: templateId != null ? templateId : undefined
             }).catch((err) => {
                 onGlobalError?.(err?.message);
                 throw err;
@@ -1787,6 +1880,142 @@ export default function HomeScreen({
                 </View>
             </Modal>
 
+            <Modal animationType="fade" transparent visible={showMeetingTypeModal}>
+                <View style={styles.modalOverlay}>
+                    <View style={styles.summaryLengthCard}>
+                        <Text style={styles.transcriptHeading}>Meeting Type?</Text>
+                        <Text style={styles.summaryLengthSubtext}>
+                            Choose a template for the summary, or create a new one.
+                        </Text>
+                        {templatesLoading ? (
+                            <View style={styles.meetingTypeLoading}>
+                                <ActivityIndicator size="small" color="#1D71B8" />
+                                <Text style={styles.meetingTypeLoadingText}>Loading templates…</Text>
+                            </View>
+                        ) : templatesError ? (
+                            <Text style={styles.detailSectionError}>{templatesError}</Text>
+                        ) : (
+                            <ScrollView style={styles.meetingTypeList} showsVerticalScrollIndicator>
+                                {templates.map((t) => {
+                                    const isSelected = selectedTemplateId === t.id;
+                                    return (
+                                        <TouchableOpacity
+                                            key={t.id}
+                                            style={[
+                                                styles.meetingTypeOptionRow,
+                                                isSelected && styles.meetingTypeOptionRowActive
+                                            ]}
+                                            onPress={() => setSelectedTemplateId(t.id)}
+                                            activeOpacity={0.7}
+                                        >
+                                            <Text
+                                                style={[
+                                                    styles.summaryLengthOptionText,
+                                                    isSelected && styles.summaryLengthOptionTextActive
+                                                ]}
+                                                numberOfLines={1}
+                                            >
+                                                {t.name}
+                                            </Text>
+                                            {isSelected ? (
+                                                <Ionicons name="checkmark-circle" size={22} color="#1D71B8" />
+                                            ) : null}
+                                        </TouchableOpacity>
+                                    );
+                                })}
+                                <TouchableOpacity
+                                    style={[
+                                        styles.meetingTypeOptionRow,
+                                        selectedTemplateId === "new" && styles.meetingTypeOptionRowActive
+                                    ]}
+                                    onPress={() => setSelectedTemplateId("new")}
+                                    activeOpacity={0.7}
+                                >
+                                    <Text
+                                        style={[
+                                            styles.summaryLengthOptionText,
+                                            selectedTemplateId === "new" && styles.summaryLengthOptionTextActive
+                                        ]}
+                                    >
+                                        + Create New Template
+                                    </Text>
+                                    {selectedTemplateId === "new" ? (
+                                        <Ionicons name="checkmark-circle" size={22} color="#1D71B8" />
+                                    ) : null}
+                                </TouchableOpacity>
+                            </ScrollView>
+                        )}
+                        <View style={styles.meetingTypeButtons}>
+                            <TouchableOpacity
+                                style={styles.summaryLengthCancel}
+                                onPress={handleMeetingTypeCancel}
+                            >
+                                <Text style={styles.summaryLengthCancelText}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.summaryLengthOption, styles.summaryLengthOptionActive]}
+                                onPress={handleMeetingTypeConfirm}
+                                disabled={templatesLoading}
+                            >
+                                <Text style={styles.summaryLengthOptionTextActive}>Confirm</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+
+            <Modal animationType="fade" transparent visible={showTemplateEditor}>
+                <View style={styles.modalOverlay}>
+                    <View style={styles.summaryLengthCard}>
+                        <Text style={styles.transcriptHeading}>New Template</Text>
+                        <Text style={styles.summaryLengthSubtext}>
+                            Add a name and prompt text for your meeting summary template.
+                        </Text>
+                        <TextInput
+                            style={styles.renameInput}
+                            value={editorTemplateName}
+                            onChangeText={setEditorTemplateName}
+                            placeholder="Template name"
+                            placeholderTextColor="#94A3B8"
+                            autoCapitalize="words"
+                        />
+                        <TextInput
+                            style={[styles.renameInput, styles.editorPromptInput]}
+                            value={editorTemplatePrompt}
+                            onChangeText={setEditorTemplatePrompt}
+                            placeholder="Prompt text (instructions for the summary)"
+                            placeholderTextColor="#94A3B8"
+                            multiline
+                            numberOfLines={6}
+                            textAlignVertical="top"
+                        />
+                        {editorError ? (
+                            <Text style={styles.detailSectionError}>{editorError}</Text>
+                        ) : null}
+                        <View style={styles.meetingTypeButtons}>
+                            <TouchableOpacity
+                                style={styles.summaryLengthCancel}
+                                onPress={handleCloseTemplateEditor}
+                                disabled={editorSaving}
+                            >
+                                <Text style={styles.summaryLengthCancelText}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.summaryLengthOption, styles.summaryLengthOptionActive]}
+                                onPress={handleSaveNewTemplate}
+                                disabled={editorSaving}
+                            >
+                                {editorSaving ? (
+                                    <ActivityIndicator size="small" color="#FFFFFF" />
+                                ) : (
+                                    <Text style={styles.summaryLengthOptionTextActive}>Save</Text>
+                                )}
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
+
             <Modal animationType="fade" transparent visible={showRenameModal}>
                 <View style={styles.modalOverlay}>
                     <View style={styles.renameCard}>
@@ -2182,6 +2411,38 @@ const styles = StyleSheet.create({
         color: "#64748B",
         marginBottom: 12
     },
+    meetingTypeLoading: {
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 10,
+        paddingVertical: 16
+    },
+    meetingTypeLoadingText: {
+        fontSize: 14,
+        color: "#64748B"
+    },
+    meetingTypeList: {
+        maxHeight: 220,
+        marginBottom: 14
+    },
+    meetingTypeOptionRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        paddingVertical: 12,
+        paddingHorizontal: 14,
+        marginBottom: 6,
+        borderRadius: 10,
+        backgroundColor: "#F1F5F9"
+    },
+    meetingTypeOptionRowActive: {
+        backgroundColor: "#E0F2FE"
+    },
+    meetingTypeButtons: {
+        flexDirection: "row",
+        gap: 12,
+        justifyContent: "flex-end"
+    },
     summaryLengthOptions: {
         gap: 10,
         marginBottom: 12
@@ -2269,6 +2530,10 @@ const styles = StyleSheet.create({
         color: "#1E293B",
         marginBottom: 20,
         backgroundColor: "#F8FAFC"
+    },
+    editorPromptInput: {
+        minHeight: 120,
+        paddingTop: 12
     },
     renameActions: {
         flexDirection: "row",

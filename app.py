@@ -96,22 +96,15 @@ logger = logging.getLogger(__name__)
 # ----------------------------
 app.register_blueprint(api_blueprint)
 
-# Ensure DB tables exist (e.g. process_jobs for async job status polling)
+# Ensure DB tables exist and seed default template (Standard from Prompts/standard.txt)
 with app.app_context():
     from backend.models import ProcessJob  # noqa: F401 - register model
     db.create_all()
-# Debug: show what this process sees for the OPENAI_API_KEY (masked)
-try:
-    _k = os.getenv("OPENAI_API_KEY")
-    if _k:
-        print("DEBUG OPENAI_API_KEY =", (_k[:10] + "..." + _k[-4:]))
-        print("DEBUG OPENAI_API_KEY len =", len(_k))
-    else:
-        print("DEBUG OPENAI_API_KEY = None")
-        print("DEBUG OPENAI_API_KEY len = None")
-except Exception:
-    # Never fail startup due to debug printing
-    pass
+    try:
+        from tools.seed_templates import seed_templates
+        seed_templates()
+    except Exception as e:
+        logger.warning("Template seeding skipped: %s", e)
 
 # Instantiate OpenAI client (explicit key; fail fast if missing)
 client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])

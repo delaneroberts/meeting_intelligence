@@ -25,6 +25,49 @@ export function getBaseUrl() {
 }
 
 /**
+ * Fetch meeting templates (for "Meeting Type?" modal).
+ * @returns {Promise<{ templates: Array<{ id: number, name: string, prompt_text: string }> }>}
+ */
+export async function getTemplates() {
+    const base = getBaseUrl();
+    if (!base) {
+        throw new Error("Cannot reach server. Set apiBaseUrl in config.");
+    }
+    const response = await fetch(`${base}/api/templates`, { method: "GET" }).catch((err) => {
+        throw new Error(err?.message || "Network error.");
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+        throw new Error(data?.error || `Templates failed (${response.status}).`);
+    }
+    return data;
+}
+
+/**
+ * Create a new meeting template.
+ * @param {{ name: string, prompt_text: string }} body
+ * @returns {Promise<{ id: number, name: string, prompt_text: string, is_default: boolean, created_at: string }>}
+ */
+export async function createTemplate(body) {
+    const base = getBaseUrl();
+    if (!base) {
+        throw new Error("Cannot reach server. Set apiBaseUrl in config.");
+    }
+    const response = await fetch(`${base}/api/templates`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: body.name, prompt_text: body.prompt_text ?? "" }),
+    }).catch((err) => {
+        throw new Error(err?.message || "Network error.");
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+        throw new Error(data?.error || `Create template failed (${response.status}).`);
+    }
+    return data;
+}
+
+/**
  * Upload audio and start processing (async job).
  * Use progress_job_id to get 202 and poll status.
  * @param {Object} options
@@ -32,10 +75,11 @@ export function getBaseUrl() {
  * @param {string} [options.jobId] - If set, request returns 202 and runs async
  * @param {string} [options.agenda]
  * @param {string} [options.userId='1']
+ * @param {number|null} [options.templateId] - MeetingTemplate id for summary prompt; omit for default
  * @returns {Promise<{ status: number, job_id?: string, ...result }>}
  */
 export async function processAudio(options = {}) {
-    const { audioUri, jobId, agenda = "", userId = "1", signal, transcriptionLanguage = "auto", diarization = true, waitForCompletion = true } = options;
+    const { audioUri, jobId, agenda = "", userId = "1", signal, transcriptionLanguage = "auto", diarization = true, waitForCompletion = true, templateId } = options;
     const base = getBaseUrl();
     if (!base) {
         throw new Error("Cannot reach server. Set apiBaseUrl in config.");
@@ -54,6 +98,9 @@ export async function processAudio(options = {}) {
     if (agenda) formData.append("agenda", agenda);
     if (transcriptionLanguage) formData.append("transcription_language", transcriptionLanguage);
     formData.append("diarization", diarization ? "1" : "0");
+    if (templateId != null && templateId !== "") {
+        formData.append("template_id", String(templateId));
+    }
 
     const response = await fetch(`${base}/api/process`, {
         method: "POST",
